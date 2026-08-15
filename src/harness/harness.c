@@ -23,8 +23,13 @@ extern void Harness_Platform_Init(tHarness_platform* platform);
 extern const tPlatform_bootstrap SDL1_bootstrap;
 extern const tPlatform_bootstrap SDL2_bootstrap;
 extern const tPlatform_bootstrap SDL3_bootstrap;
+extern const tPlatform_bootstrap Amiga_bootstrap;
 
 static const tPlatform_bootstrap* platform_bootstraps[] = {
+#if defined(DETHRACE_PLATFORM_AMIGA)
+    &Amiga_bootstrap,
+#define HAS_PLATFORM_BOOTSTRAP
+#endif
 #if defined(DETHRACE_PLATFORM_SDL3)
     &SDL3_bootstrap,
 #define HAS_PLATFORM_BOOTSTRAP
@@ -277,8 +282,14 @@ int Harness_Init(int* argc, char* argv[]) {
     harness_game_config.enable_cd_check = 0;
     // original physics time step. Lower values seem to work better at 30+ fps
     harness_game_config.physics_step_time = 40;
+#ifdef AMIGA
+    // AmigaOS Delay() has a 20 ms minimum step, so a 60 FPS limiter would
+    // stall otherwise fast frames. Match the stable Amiga port and run unlocked.
+    harness_game_config.fps = 0;
+#else
     // limit to 60 fps by default
     harness_game_config.fps = 60;
+#endif
     // do not freeze timer
     harness_game_config.freeze_timer = 0;
     // default demo time out is 240s
@@ -297,6 +308,10 @@ int Harness_Init(int* argc, char* argv[]) {
     harness_game_config.no_bind = 0;
     // Disable verbose logging
     harness_game_config.verbose = 0;
+    // Amiga native video defaults to CGX 8-bit. --aga has priority over --bpp.
+    harness_game_config.bpp = 8;
+    harness_game_config.aga_screen = 0;
+    harness_game_config.custom_screen = 0;
 
     // install signal handler
     harness_game_config.install_signalhandler = 1;
@@ -444,6 +459,16 @@ int Harness_ProcessCommandLine(int* argc, char* argv[]) {
                 safe_strcpy(harness_game_config.platform_name, argv[i + 1]);
                 consumed = 2;
             }
+        } else if (strstr(argv[i], "--bpp=") != NULL) {
+            char* s = strstr(argv[i], "=");
+            harness_game_config.bpp = atoi(s + 1);
+            consumed = 1;
+        } else if (strcasecmp(argv[i], "--aga") == 0) {
+            harness_game_config.aga_screen = 1;
+            consumed = 1;
+        } else if (strcasecmp(argv[i], "--ask") == 0) {
+            harness_game_config.custom_screen = 1;
+            consumed = 1;
         }
 
         if (consumed > 0) {

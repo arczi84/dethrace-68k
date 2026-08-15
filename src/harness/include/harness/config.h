@@ -57,6 +57,9 @@ typedef struct tHarness_game_config {
     int verbose;
     int opengl_3dfx_mode;
     int game_completed;
+    int bpp;
+    int aga_screen;
+    int custom_screen;
 
     int install_signalhandler;
     int no_bind;

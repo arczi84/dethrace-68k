@@ -49,10 +49,10 @@ if(DETHRACE_3DFX_PATCH)
     target_compile_definitions(dethrace_obj PRIVATE DETHRACE_3DFX_PATCH)
 endif()
 
-if(IS_BIGENDIAN)
-    target_compile_definitions(dethrace_obj PRIVATE BR_ENDIAN_BIG=1)
+if(WORDS_BIGENDIAN)
+    target_compile_definitions(dethrace_obj PRIVATE BR_ENDIAN_BIG=1 BR_ENDIAN_LITTLE=0)
 else()
-    target_compile_definitions(dethrace_obj PRIVATE BR_ENDIAN_LITTLE=1)
+    target_compile_definitions(dethrace_obj PRIVATE BR_ENDIAN_BIG=0 BR_ENDIAN_LITTLE=1)
 endif()
 
 if(DETHRACE_REPLAY_DEBUG)

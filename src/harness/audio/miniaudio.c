@@ -1,3 +1,6 @@
+#ifdef AMIGA
+#include "miniaudio-ahi-music.c"
+#else
 // Disable miniaudio's 'null' device fallback. A proper device must be found to enable playback
 #define MA_NO_NULL
 
@@ -376,3 +379,4 @@ tAudioBackend_error_code AudioBackend_StreamClose(tAudioBackend_stream* stream_h
     free(stream);
     return eAB_success;
 }
+#endif

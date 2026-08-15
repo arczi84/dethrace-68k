@@ -15,11 +15,7 @@ if(DETHRACE_FIX_BUGS)
     target_compile_definitions(harness PRIVATE DETHRACE_FIX_BUGS)
 endif()
 
-if(MSVC_42_FOR_RECCMP)
-  target_link_libraries(harness PRIVATE brender inih compile_with_werror)
-else()
-  target_link_libraries(harness PRIVATE brender miniaudio stb inih compile_with_werror)
-endif()
+target_link_libraries(harness PRIVATE brender inih compile_with_werror)
 
 if(NOT MSVC)
     target_compile_options(harness PRIVATE
@@ -32,10 +28,10 @@ else()
     target_compile_definitions(harness PRIVATE -D_CRT_SECURE_NO_WARNINGS)
 endif()
 
-if(IS_BIGENDIAN)
-    target_compile_definitions(harness PRIVATE BR_ENDIAN_BIG=1)
+if(WORDS_BIGENDIAN)
+    target_compile_definitions(harness PRIVATE BR_ENDIAN_BIG=1 BR_ENDIAN_LITTLE=0)
 else()
-    target_compile_definitions(harness PRIVATE BR_ENDIAN_LITTLE=1)
+    target_compile_definitions(harness PRIVATE BR_ENDIAN_BIG=0 BR_ENDIAN_LITTLE=1)
 endif()
 
 target_sources(harness PRIVATE
@@ -59,7 +55,9 @@ target_sources(harness PRIVATE
 
 if(DETHRACE_SOUND_ENABLED)
     target_sources(harness PRIVATE audio/miniaudio.c)
-    target_link_libraries(harness PRIVATE miniaudio stb)
+    if(NOT DETHRACE_PLATFORM_AMIGA)
+        target_link_libraries(harness PRIVATE miniaudio stb)
+    endif()
 else()
     target_sources(harness PRIVATE audio/null.c)
 endif()
@@ -72,10 +70,20 @@ elseif(WIN32)
     target_link_libraries(harness PRIVATE dbghelp ws2_32 iphlpapi)
 elseif(APPLE)
     target_sources(harness PRIVATE os/macos.c)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "AmigaOS")
+    target_sources(harness PRIVATE os/amiga.c)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_sources(harness PRIVATE os/linux.c)
 else()
     message(FATAL_ERROR "Unsupported or unknown platform: ${CMAKE_SYSTEM_NAME}")
+endif()
+
+if(DETHRACE_PLATFORM_AMIGA)
+    target_sources(harness PRIVATE
+        platforms/amiga.c
+        platforms/amiga_rawcode_to_dinput.h
+    )
+    target_compile_definitions(harness PRIVATE DETHRACE_PLATFORM_AMIGA AMIGA)
 endif()
 
 if(DETHRACE_PLATFORM_SDL1)
@@ -135,5 +143,3 @@ if(DETHRACE_PLATFORM_SDL_DYNAMIC)
     target_compile_definitions(harness PRIVATE DETHRACE_SDL_DYNAMIC)
     target_link_libraries(harness PRIVATE ${CMAKE_DL_LIBS})
 endif()
-
-

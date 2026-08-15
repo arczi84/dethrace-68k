@@ -23,10 +23,10 @@ if(DETHRACE_FIX_BUGS)
     target_compile_definitions(s3 PRIVATE DETHRACE_FIX_BUGS)
 endif()
 
-if(IS_BIGENDIAN)
-    target_compile_definitions(s3 PRIVATE BR_ENDIAN_BIG=1)
+if(WORDS_BIGENDIAN)
+    target_compile_definitions(s3 PRIVATE BR_ENDIAN_BIG=1 BR_ENDIAN_LITTLE=0)
 else()
-    target_compile_definitions(s3 PRIVATE BR_ENDIAN_LITTLE=1)
+    target_compile_definitions(s3 PRIVATE BR_ENDIAN_BIG=0 BR_ENDIAN_LITTLE=1)
 endif()
 
 target_sources(s3 PRIVATE

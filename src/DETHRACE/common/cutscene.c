@@ -15,10 +15,12 @@
 #include "smackw32/smackw32.h"
 #include "sound.h"
 #include "utility.h"
+#include <stdbool.h>
 #include <stdlib.h>
 #include <time.h>
 
 tS32 gLast_demo_end_anim = -90000;
+bool loading_palette = false;
 
 // IDA: void __usercall ShowCutScene(int pIndex@<EAX>, int pWait_end@<EDX>, int pSound_ID@<EBX>, br_scalar pDelay)
 // FUNCTION: CARM95 0x004a58c0
@@ -243,9 +245,11 @@ void DoDemoGoodbye(void) {
 void StartLoadingScreen(void) {
 
     PossibleService();
+    loading_palette = true;
     if (gProgram_state.sausage_eater_mode) {
         SplashScreenWith(harness_game_info.defines.GERMAN_LOADSCRN);
     } else {
         SplashScreenWith("LOADSCRN.PIX");
     }
+    loading_palette = false;
 }

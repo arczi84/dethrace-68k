@@ -44,6 +44,7 @@ option(DETHRACE_NET_ENABLED "Include net support" ON)
 option(DETHRACE_PLATFORM_SDL1 "Support SDL 1.2 platform driver" OFF)
 option(DETHRACE_PLATFORM_SDL2 "Support SDL 2 platform driver" ON)
 option(DETHRACE_PLATFORM_SDL3 "Support SDL 3 platform driver" OFF)
+option(DETHRACE_PLATFORM_AMIGA "Support native AmigaOS platform driver" OFF)
 
 option(MSVC_42_FOR_RECCMP "Build with MSVC 4.2 to match assembly" OFF)
 
@@ -103,6 +104,13 @@ set(count_sdl_platforms 0)
 
 set(DETHRACE_PLATFORMS)
 
+if(DETHRACE_PLATFORM_AMIGA)
+    set(DETHRACE_PLATFORM_SDL1 OFF CACHE BOOL "Support SDL 1.2 platform driver" FORCE)
+    set(DETHRACE_PLATFORM_SDL2 OFF CACHE BOOL "Support SDL 2 platform driver" FORCE)
+    set(DETHRACE_PLATFORM_SDL3 OFF CACHE BOOL "Support SDL 3 platform driver" FORCE)
+    list(APPEND DETHRACE_PLATFORMS AMIGA)
+endif()
+
 if(DETHRACE_PLATFORM_SDL1)
     find_package(SDL REQUIRED)
     list(APPEND DETHRACE_PLATFORMS SDL1)
@@ -145,7 +153,7 @@ add_subdirectory(lib/BRender-v1.3.2)
 add_subdirectory(lib/libsmacker)
 add_subdirectory(lib/inih)
 
-if(DETHRACE_SOUND_ENABLED)
+if(DETHRACE_SOUND_ENABLED AND NOT DETHRACE_PLATFORM_AMIGA)
     add_subdirectory(lib/miniaudio)
     add_subdirectory(lib/stb)
 endif()

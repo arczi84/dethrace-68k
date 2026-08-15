@@ -74,6 +74,15 @@ int S3LoadSample(tS3_sound_id id) {
         sample->size = gS3_last_file_length;
     }
 
+#ifdef AMIGA
+    /* AHI expects signed 8-bit PCM, while Carmageddon samples are unsigned. */
+    if (sample->resolution == 8) {
+        for (int i = 0; i < sample->size; i++) {
+            sample->dataptr[i] ^= 0x80;
+        }
+    }
+#endif
+
     // win95
     // descriptor->sound_buffer = S3LoadWavFile(filename, sample);
     // if (!descriptor->sound_buffer) {

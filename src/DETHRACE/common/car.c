@@ -2855,7 +2855,11 @@ void TranslateCar(tCollision_info* c, br_scalar dt) {
 
 // IDA: int __usercall CollCheck@<EAX>(tCollision_info *c@<EAX>, br_scalar dt)
 // FUNCTION: CARM95 0x0047f5d0
+#ifdef AMIGA
+int __attribute__((optimize("-fno-unroll-loops", "-O2"))) CollCheck(tCollision_info* c, br_scalar dt) {
+#else
 int CollCheck(tCollision_info* c, br_scalar dt) {
+#endif
     br_vector3 a;
     br_vector3 a1;
     br_vector3 aa;

@@ -246,7 +246,12 @@ void MungeHeadups(void) {
         }
         ChangeHeadupText(gProgram_state.frame_rate_headup, the_text);
     } else {
+#ifdef AMIGA
+        sprintf(the_text, "FPS: %.1f", gFrame_rate / 10.0f);
+        ChangeHeadupText(gProgram_state.frame_rate_headup, the_text);
+#else
         ChangeHeadupText(gProgram_state.frame_rate_headup, "");
+#endif
     }
     net_credits = gProgram_state.credits_earned - gProgram_state.credits_lost;
     if (fabs((double)(gProgram_state.credits_earned - gProgram_state.credits_lost) - (double)gLast_credit_headup__mainloop) / (double)gFrame_period > 1.2) {

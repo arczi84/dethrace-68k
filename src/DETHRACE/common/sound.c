@@ -101,6 +101,10 @@ br_vector3 gCamera_velocity;
 // IDA: void __cdecl UsePathFileToDetermineIfFullInstallation()
 // FUNCTION: CARM95 0x00463fb0
 void UsePathFileToDetermineIfFullInstallation(void) {
+#ifdef AMIGA
+    gCD_fully_installed = 1;
+    return;
+#endif
     // changed by dethrace for compatibility
     // char line1[80];
     // char line2[80];

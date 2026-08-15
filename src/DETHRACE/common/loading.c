@@ -3381,7 +3381,11 @@ FILE* OldDRfopen(char* pFilename, char* pMode) {
     tPath_name path_file;
     tPath_name source_check;
     // GLOBAL: CARM95 0x50a5e0
+#ifdef AMIGA
+    static int source_exists = 0;
+#else
     static int source_exists = 1;
+#endif
     int len;
 
 #ifdef DETHRACE_FIX_BUGS
@@ -3545,6 +3549,10 @@ FILE* DRfopen(char* pFilename, char* pMode) {
 // IDA: int __usercall GetCDPathFromPathsTxtFile@<EAX>(char *pPath_name@<EAX>)
 // FUNCTION: CARM95 0x00426cc5
 int GetCDPathFromPathsTxtFile(char* pPath_name) {
+#ifdef AMIGA
+    strcpy(pPath_name, "PROGDIR:");
+    return 1;
+#else
     // GLOBAL: CARM95 0x50a5e4
     static int got_it_already = 0;
     // GLOBAL: CARM95 0x531e00
@@ -3564,6 +3572,7 @@ int GetCDPathFromPathsTxtFile(char* pPath_name) {
     }
     memcpy(pPath_name, cd_pathname, 256);
     return 1;
+#endif
 }
 
 // IDA: int __cdecl TestForOriginalCarmaCDinDrive()
@@ -3571,6 +3580,9 @@ int GetCDPathFromPathsTxtFile(char* pPath_name) {
 int TestForOriginalCarmaCDinDrive(void) {
     // The symbol dump didn't include any local variable information.
     // These names are not necessarily the original names.
+#ifdef AMIGA
+    return 1;
+#endif
     char CD_dir[512];        // [esp+Ch] [ebp-608h] BYREF
     char ch;                 // [esp+20Ch] [ebp-408h]
     tPath_name path_file;    // [esp+210h] [ebp-404h] BYREF

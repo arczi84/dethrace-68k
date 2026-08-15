@@ -725,7 +725,9 @@ int NetJoinGameLowLevel(tNet_game_details* pDetails, char* pPlayer_name) {
     return PDNetJoinGame(pDetails, pPlayer_name);
 }
 
+#ifndef AMIGA
 DR_STATIC_ASSERT(offsetof(tNet_message_join, player_info) == 4);
+#endif
 // DR_STATIC_ASSERT(offsetof(tNet_game_player_info, this_players_time_stamp) == 0x10);
 // DR_STATIC_ASSERT(offsetof(tNet_game_player_info, wasted) == 0x68);
 // DR_STATIC_ASSERT(offsetof(tNet_game_player_info, initial_position) == 0x8c);

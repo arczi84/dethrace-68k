@@ -133,10 +133,12 @@ void GameMain(int pArgc, char** pArgv) {
     strcat(gApplication_path, "DATA");
 
     UsePathFileToDetermineIfFullInstallation();
+#ifndef AMIGA
     if (!gCD_fully_installed && GetCDPathFromPathsTxtFile(CD_dir) && !PDCheckDriveExists(CD_dir)) {
         PDInitialiseSystem();
         PDFatalError("Can't find the Carmageddon CD\n");
     }
+#endif
     InitialiseDeathRace(pArgc, pArgv);
     DoProgram();
     QuitGame();

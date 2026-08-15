@@ -12,6 +12,8 @@ Dethrace is an attempt to learn how the 1997 driving/mayhem game [Carmageddon](h
 
 ## Building
 
+AmigaOS cross-build instructions and port-specific notes are in [docs/AMIGA.md](docs/AMIGA.md).
+
 ### Dependencies
 
 Dethrace using CMake to build, and SDL2 at runtime. The easiest way to install them is via your favorite package manager.
