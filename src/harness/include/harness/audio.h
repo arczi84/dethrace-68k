@@ -15,13 +15,13 @@ void AudioBackend_UnInit(void);
 tAudioBackend_error_code AudioBackend_InitCDA(void);
 void AudioBackend_UnInitCDA(void);
 void* AudioBackend_AllocateSampleTypeStruct(void);
-tAudioBackend_error_code AudioBackend_PlaySample(void* type_struct_sample, int channels, void* data, int size, int rate, int loop);
+tAudioBackend_error_code AudioBackend_PlaySample(void* type_struct_sample, int channels, void* data, int size, int rate, int loop, int sample_size);
 int AudioBackend_SoundIsPlaying(void* type_struct_sample);
 tAudioBackend_error_code AudioBackend_StopSample(void* type_struct_sample);
 tAudioBackend_error_code AudioBackend_SetVolume(void* type_struct_sample, int volume);
 tAudioBackend_error_code AudioBackend_SetPan(void* type_struct_sample, int pan);
 tAudioBackend_error_code AudioBackend_SetFrequency(void* type_struct_sample, int original_rate, int new_rate);
-
+tAudioBackend_error_code AudioBackend_SetVolumeSeparate(void* type_struct_sample, int left_volume, int right_volume);
 tAudioBackend_error_code AudioBackend_PlayCDA(int track);
 tAudioBackend_error_code AudioBackend_StopCDA(void);
 int AudioBackend_CDAIsPlaying(void);

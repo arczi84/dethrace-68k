@@ -14,9 +14,10 @@ target_include_directories(libsmacker
     SYSTEM PUBLIC
         .
 )
-if(CMAKE_C_COMPILER_ID MATCHES ".*(GNU|Clang).*")
+
+if(NOT MSVC)
     target_compile_options(libsmacker PRIVATE -Wall)
-elseif(MSVC)
+else()
     target_compile_definitions(libsmacker PRIVATE -D_CRT_SECURE_NO_WARNINGS)
 endif()
 

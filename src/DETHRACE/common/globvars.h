@@ -139,6 +139,8 @@ extern int gGraf_spec_index;
 extern int gSound_available;
 extern int gNumber_of_races;
 extern char gDir_separator[3];
+extern int cd_audio_unit;
+extern char cd_audio_device[32];
 
 // FIXME!
 #define TAU 6.283185307179586

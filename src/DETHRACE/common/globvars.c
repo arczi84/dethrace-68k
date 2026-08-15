@@ -137,3 +137,5 @@ int gGraf_spec_index;
 int gSound_available;
 int gNumber_of_races;
 char gDir_separator[3] = "";
+int cd_audio_unit;
+char cd_audio_device[32];

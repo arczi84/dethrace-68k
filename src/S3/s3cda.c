@@ -22,7 +22,7 @@ int S3StopCDAOutlets(void) {
         for (o = gS3_outlets; o; o = o->next) {
             for (chan = o->channel_list; chan; chan = chan->next) {
                 if (chan->type == eS3_ST_cda) {
-                    AudioBackend_StopCDA();
+                   // AudioBackend_StopCDA(); //arczi
                     // S3SetMCIStopCommand(chan);
                 }
             }
@@ -39,6 +39,7 @@ int S3PlayCDA(tS3_channel* chan) {
     int track;
     if (gS3_cda_enabled) {
         track = strtoul(chan->descriptor->filename, NULL, 10);
+        //printf("Playing CDA track %d\n", track);
         if (AudioBackend_PlayCDA(track) == eAB_error) {
             return eS3_error_start_cda;
         }

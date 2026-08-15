@@ -164,7 +164,13 @@ void Harness_Init(int* argc, char* argv[]) {
     harness_game_config.no_bind = 0;
     // Disable verbose logging
     harness_game_config.verbose = 0;
-
+    // Change the default bpp
+    harness_game_config.bpp = 16;
+    // Use AGA screen mode
+    harness_game_config.aga_screen = 0;
+    // Use custom screen mode
+    harness_game_config.custom_screen = 0;
+    
     // install signal handler by default
     harness_game_config.install_signalhandler = 1;
 
@@ -173,8 +179,11 @@ void Harness_Init(int* argc, char* argv[]) {
     if (harness_game_config.install_signalhandler) {
         OS_InstallSignalHandler(argv[0]);
     }
-
+#ifdef AMIGA
+    char* root_dir = strdup("PROGDIR:");
+#else
     char* root_dir = getenv("DETHRACE_ROOT_DIR");
+#endif
     if (root_dir != NULL) {
         LOG_INFO("DETHRACE_ROOT_DIR is set to '%s'", root_dir);
     } else {
@@ -193,16 +202,16 @@ void Harness_Init(int* argc, char* argv[]) {
         Harness_DetectGameMode();
     }
 
-    if (force_null_platform) {
-        Null_Platform_Init(&gHarness_platform);
-    } else {
+   // if (force_null_platform) {
+    //    Null_Platform_Init(&gHarness_platform);
+   // } else {
         Harness_Platform_Init(&gHarness_platform);
-    }
+ //   }
 }
 
 // used by unit tests
 void Harness_ForceNullPlatform(void) {
-    force_null_platform = 1;
+    //force_null_platform = 1;
 }
 
 int Harness_ProcessCommandLine(int* argc, char* argv[]) {
@@ -267,11 +276,17 @@ int Harness_ProcessCommandLine(int* argc, char* argv[]) {
         } else if (strcasecmp(argv[i], "--no-bind") == 0) {
             harness_game_config.no_bind = 1;
             handled = 1;
-        } else if (strcasecmp(argv[i], "--no-music") == 0) {
-            harness_game_config.no_music = 1;
+        } else if (strstr(argv[i], "--bpp=") != NULL) {
+            char* s = strstr(argv[i], "=");
+            harness_game_config.bpp = atof(s + 1);
+            handled = 1;
+        } else if (strcasecmp(argv[i], "--aga") == 0) {
+            harness_game_config.aga_screen = 1;
+            handled = 1;
+        } else if (strcasecmp(argv[i], "--ask") == 0) {
+            harness_game_config.custom_screen = 1;
             handled = 1;
         }
-
         if (handled) {
             // shift args downwards
             for (int j = i; j < *argc - 1; j++) {
@@ -289,12 +304,9 @@ int Harness_ProcessCommandLine(int* argc, char* argv[]) {
 FILE* Harness_Hook_fopen(const char* pathname, const char* mode) {
     return OS_fopen(pathname, mode);
 }
-
-// Localization
 int Harness_Hook_isalnum(int c)
 {
     if (harness_game_info.localization == eGameLocalization_polish) {
-        // Polish diacritic letters in Windows-1250
         unsigned char letters[] = { 140, 143, 156, 159, 163, 165, 175, 179, 185, 191, 198, 202, 209, 211, 230, 234, 241, 243 };
         for (int i = 0; i < (int)sizeof(letters); i++) {
             if ((unsigned char)c == letters[i]) {
@@ -302,6 +314,5 @@ int Harness_Hook_isalnum(int c)
             }
         }
     }
-
     return isalnum(c);
 }

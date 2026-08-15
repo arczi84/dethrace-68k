@@ -588,6 +588,8 @@ To run locally, you'll need to use emrun:
     +----------------------------------+--------------------------------------------------------------------+
     | MA_NO_NULL                       | Disables the null backend.                                         |
     +----------------------------------+--------------------------------------------------------------------+
+    | MA_NO_AHI                        | Disables the AHI backend.                                          |
+    +----------------------------------+--------------------------------------------------------------------+
     | MA_ENABLE_ONLY_SPECIFIC_BACKENDS | Disables all backends by default and requires `MA_ENABLE_*` to     |
     |                                  | enable specific backends.                                          |
     +----------------------------------+--------------------------------------------------------------------+
@@ -629,6 +631,9 @@ To run locally, you'll need to use emrun:
     +----------------------------------+--------------------------------------------------------------------+
     | MA_ENABLE_WEBAUDIO               | Used in conjunction with MA_ENABLE_ONLY_SPECIFIC_BACKENDS to       |
     |                                  | enable the Web Audio backend.                                      |
+    +----------------------------------+--------------------------------------------------------------------+
+    | MA_ENABLE_AHI                    | Used in conjunction with MA_ENABLE_ONLY_SPECIFIC_BACKENDS to       |
+    |                                  | enable the Amiga AHI backend.                                      |
     +----------------------------------+--------------------------------------------------------------------+
     | MA_ENABLE_NULL                   | Used in conjunction with MA_ENABLE_ONLY_SPECIFIC_BACKENDS to       |
     |                                  | enable the null backend.                                           |
@@ -3606,6 +3611,7 @@ example, ALSA, which is specific to Linux, will not be included in the Windows b
     | AAudio      | ma_backend_aaudio     | Android 8+                                             |
     | OpenSL ES   | ma_backend_opensl     | Android (API level 16+)                                |
     | Web Audio   | ma_backend_webaudio   | Web (via Emscripten)                                   |
+    | AHI         | ma_backend_ahi        | Amiga AHI                                              |
     | Custom      | ma_backend_custom     | Cross Platform                                         |
     | Null        | ma_backend_null       | Cross Platform (not used on Web)                       |
     +-------------+-----------------------+--------------------------------------------------------+
@@ -3896,6 +3902,12 @@ typedef ma_uint16 wchar_t;
     #endif
     #if defined(__HAIKU__)
         #define MA_HAIKU
+    #endif
+    #ifdef __amigaos4__
+        #define MA_AMIGAOS4
+    #endif
+	#ifdef __MORPHOS__
+        #define MA_MORPHOS
     #endif
 #endif
 
@@ -6548,6 +6560,10 @@ This section contains the APIs for device playback and capture. Here is where yo
         #endif
     #endif
 #endif
+#if defined (MA_AMIGAOS4) || defined(MA_MORPHOS)
+    #define MA_SUPPORT_AHI
+    #define MA_NO_RUNTIME_LINKING
+#endif    
 #if defined(MA_UNIX) && !defined(MA_ORBIS) && !defined(MA_PROSPERO)
     #if defined(MA_LINUX)
         #if !defined(MA_ANDROID) && !defined(__COSMOPOLITAN__)   /* ALSA is not supported on Android. */
@@ -6633,6 +6649,9 @@ This section contains the APIs for device playback and capture. Here is where yo
 #if defined(MA_SUPPORT_NULL) && !defined(MA_NO_NULL) && (!defined(MA_ENABLE_ONLY_SPECIFIC_BACKENDS) || defined(MA_ENABLE_NULL))
     #define MA_HAS_NULL
 #endif
+#if defined(MA_SUPPORT_AHI) && !defined(MA_NO_AHI) && (!defined(MA_ENABLE_ONLY_SPECIFIC_BACKENDS) || defined(MA_ENABLE_AHI))
+    #define MA_HAS_AHI
+#endif
 
 typedef enum
 {
@@ -6672,6 +6691,7 @@ typedef enum
     ma_backend_aaudio,
     ma_backend_opensl,
     ma_backend_webaudio,
+    ma_backend_ahi,
     ma_backend_custom,  /* <-- Custom backend, with callbacks defined by the context config. */
     ma_backend_null     /* <-- Must always be the last item. Lowest priority, and used as the terminator for backend enumeration. */
 } ma_backend;
@@ -6997,6 +7017,7 @@ typedef union
     ma_int32 aaudio;                /* AAudio uses a 32-bit integer for identification. */
     ma_uint32 opensl;               /* OpenSL|ES uses a 32-bit unsigned integer for identification. */
     char webaudio[32];              /* Web Audio always uses default devices for now, but if this changes it'll be a GUID. */
+    char ahi[64];                   /* Amiga use the AHINAME */
     union
     {
         int i;
@@ -7667,6 +7688,12 @@ struct ma_context
             int _unused;
         } null_backend;
 #endif
+#ifdef MA_SUPPORT_AHI
+        struct
+        {
+            int _unused;
+        } ahi;
+#endif
     };
 
     union
@@ -7998,6 +8025,36 @@ struct ma_device
             ma_atomic_bool32 isStarted; /* Read and written by multiple threads. Must be used atomically, and must be 32-bit for compiler compatibility. */
         } null_device;
 #endif
+#ifdef MA_SUPPORT_AHI
+        struct 
+        {
+            struct MsgPort       *ahiReplyPort;
+            struct AHIRequest    *ahiRequest[2];
+            //struct Task          *ahiTask;
+            ma_uint32             ahiType;
+            int                   currentBuffer; // buffer number to fill
+            ma_bool32             ahiRequestSent[2];
+            ma_bool32             deviceOpen;
+            ma_uint8             *audioBuffer[2];
+            ma_uint32             lastCaptureTicks;
+            ma_bool32             requestSent; // Keeps book of IO done with SendIO(), to avoid issues with WaitIO() on record
+            ma_thread             deviceThread;
+            ma_event              operationEvent;
+            ma_event              operationCompletionEvent;
+            ma_semaphore          operationSemaphore;
+            ma_uint32             operation;
+            ma_result             operationResult;
+            ma_timer              timer;
+            double                priorRunTime;
+            ma_uint32             currentPeriodFramesRemainingPlayback;
+            ma_uint32             currentPeriodFramesBufferedPlayback;
+            ma_uint32             currentPeriodFramesRemainingCapture;
+            ma_uint32             currentPeriodFramesBufferedCapture;
+            ma_uint64             lastProcessedFramePlayback;
+            ma_uint64             lastProcessedFrameCapture;
+            ma_atomic_bool32      isStarted; /* Read and written by multiple threads. Must be used atomically, and must be 32-bit for compiler compatibility. */
+        } ahi;
+#endif
     };
 };
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -8081,6 +8138,7 @@ When `backends` is NULL, the default priority order will be used. Below is a lis
     | AAudio      | ma_backend_aaudio     | Android 8+                                             |
     | OpenSL|ES   | ma_backend_opensl     | Android (API level 16+)                                |
     | Web Audio   | ma_backend_webaudio   | Web (via Emscripten)                                   |
+    | AHI         | ma_backend_ahi        | AmigaOS4 AHI - MorphOS / OS3 AHI                       |
     | Null        | ma_backend_null       | Cross Platform (not used on Web)                       |
     |-------------|-----------------------|--------------------------------------------------------|
 
@@ -11488,9 +11546,35 @@ IMPLEMENTATION
 #include <emscripten/emscripten.h>
 #endif
 
+#if defined(MA_AMIGAOS4) || defined(MA_MORPHOS)
+#include <proto/dos.h>
+#include <proto/exec.h>
+#include <proto/ahi.h>
+#include <exec/types.h>
+#include <exec/ports.h>
+#include <devices/ahi.h>
+
+void MyPutChar(UBYTE c, APTR data) {
+    Write(Output(), &c, 1);
+}
+
+#if defined(MA_MORPHOS)
+		#include <exec/types.h>
+		extern struct ExecBase *SysBase;
+     //   #	define D(fmt, ...) ({((STRPTR (*)(void *, CONST_STRPTR , APTR (*)(APTR, UBYTE), STRPTR , ...))*(void**)((long)(SysBase) - 922))((void*)(SysBase), fmt, (APTR)1, NULL, ##__VA_ARGS__);})
+void D(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    RawDoFmt((CONST_STRPTR)fmt, args, MyPutChar, NULL);
+    va_end(args);
+}
+#include <clib/debug_protos.h>
+#endif
+#endif
 
 /* Architecture Detection */
 #if !defined(MA_64BIT) && !defined(MA_32BIT)
+
 #ifdef _WIN32
 #ifdef _WIN64
 #define MA_64BIT
@@ -11884,7 +11968,7 @@ static void ma_sleep__posix(ma_uint32 milliseconds)
     (void)milliseconds;
     MA_ASSERT(MA_FALSE);  /* The Emscripten build should never sleep. */
 #else
-    #if (defined(_POSIX_C_SOURCE) && _POSIX_C_SOURCE >= 199309L) || defined(MA_NX)
+    #if defined(MA_MORPHOS) || (defined(_POSIX_C_SOURCE) && _POSIX_C_SOURCE >= 199309L) || defined(MA_NX)
         struct timespec ts;
         ts.tv_sec  = milliseconds / 1000;
         ts.tv_nsec = milliseconds % 1000 * 1000000;
@@ -12077,7 +12161,7 @@ int ma_android_sdk_version()
 
 /* The default format when ma_format_unknown (0) is requested when initializing a device. */
 #ifndef MA_DEFAULT_FORMAT
-#define MA_DEFAULT_FORMAT                                   ma_format_f32
+#define MA_DEFAULT_FORMAT                                   ma_format_u8
 #endif
 
 /* The default channel count to use when 0 is used when initializing a device. */
@@ -12087,7 +12171,7 @@ int ma_android_sdk_version()
 
 /* The default sample rate to use when 0 is used when initializing a device. */
 #ifndef MA_DEFAULT_SAMPLE_RATE
-#define MA_DEFAULT_SAMPLE_RATE                              48000
+#define MA_DEFAULT_SAMPLE_RATE                              22050
 #endif
 
 /* Default periods when none is specified in ma_device_init(). More periods means more work on the CPU. */
@@ -16106,7 +16190,7 @@ static ma_result ma_thread_create__posix(ma_thread* pThread, ma_thread_priority 
         pAttr = &attr;
 
         /* We need to set the scheduler policy. Only do this if the OS supports pthread_attr_setschedpolicy() */
-        #if !defined(MA_BEOS)
+        #if 0//!defined(MA_BEOS) || defined(MA_ENABLE_AHI)
         {
             if (priority == ma_thread_priority_idle) {
             #ifdef SCHED_IDLE
@@ -17978,6 +18062,7 @@ static ma_backend_info gBackendInfo[] = /* Indexed by the backend enum. Must be 
     {ma_backend_aaudio,     "AAudio"},
     {ma_backend_opensl,     "OpenSL|ES"},
     {ma_backend_webaudio,   "Web Audio"},
+    {ma_backend_ahi,        "AHI"},
     {ma_backend_custom,     "Custom"},
     {ma_backend_null,       "Null"}
 };
@@ -18111,6 +18196,12 @@ MA_API ma_bool32 ma_is_backend_enabled(ma_backend backend)
         #else
             return MA_FALSE;
         #endif
+        case ma_backend_ahi:
+        #if defined(MA_HAS_AHI)
+            return MA_TRUE;
+        #else
+            return MA_FALSE;
+        #endif
         case ma_backend_custom:
         #if defined(MA_HAS_CUSTOM)
             return MA_TRUE;
@@ -18179,6 +18270,7 @@ MA_API ma_bool32 ma_is_loopback_supported(ma_backend backend)
         case ma_backend_aaudio:     return MA_FALSE;
         case ma_backend_opensl:     return MA_FALSE;
         case ma_backend_webaudio:   return MA_FALSE;
+        case ma_backend_ahi:        return MA_FALSE;
         case ma_backend_custom:     return MA_FALSE;    /* <-- Will depend on the implementation of the backend. */
         case ma_backend_null:       return MA_FALSE;
         default:                    return MA_FALSE;
@@ -19365,8 +19457,596 @@ static ma_result ma_device_audio_thread__default_read_write(ma_device* pDevice)
     return result;
 }
 
+/*******************************************************************************
+
+AHI Backend
+
+*******************************************************************************/
 
 
+#ifdef MA_HAS_AHI
+
+#define MA_DEVICE_OP_NONE__AHI    0
+#define MA_DEVICE_OP_START__AHI   1
+#define MA_DEVICE_OP_SUSPEND__AHI 2
+#define MA_DEVICE_OP_KILL__AHI    3
+
+static ma_thread_result MA_THREADCALL ma_device_thread__ahi(void* pData)
+{
+    ma_device* pDevice = (ma_device*)pData;
+    MA_ASSERT(pDevice != NULL);
+    
+    for (;;) {  /* Keep the thread alive until the device is uninitialized. */
+        ma_uint32 operation;
+
+        /* Wait for an operation to be requested. */
+        ma_event_wait(&pDevice->ahi.operationEvent);
+
+        /* At this point an event should have been triggered. */
+        operation = pDevice->ahi.operation;
+
+        /* Starting the device needs to put the thread into a loop. */
+        if (operation == MA_DEVICE_OP_START__AHI) {
+            /* Reset the timer just in case. */
+            ma_timer_init(&pDevice->ahi.timer);
+
+            /* Getting here means a suspend or kill operation has been requested. */
+            pDevice->ahi.operationResult = MA_SUCCESS;
+            ma_event_signal(&pDevice->ahi.operationCompletionEvent);
+            ma_semaphore_release(&pDevice->ahi.operationSemaphore);
+            continue;
+        }
+
+        /* Suspending the device means we need to stop the timer and just continue the loop. */
+        if (operation == MA_DEVICE_OP_SUSPEND__AHI) {
+            /* We need to add the current run time to the prior run time, then reset the timer. */
+            pDevice->ahi.priorRunTime += ma_timer_get_time_in_seconds(&pDevice->ahi.timer);
+            ma_timer_init(&pDevice->ahi.timer);
+
+            /* We're done. */
+            pDevice->ahi.operationResult = MA_SUCCESS;
+            ma_event_signal(&pDevice->ahi.operationCompletionEvent);
+            ma_semaphore_release(&pDevice->ahi.operationSemaphore);
+            continue;
+        }
+
+        /* Killing the device means we need to get out of this loop so that this thread can terminate. */
+        if (operation == MA_DEVICE_OP_KILL__AHI) {
+            pDevice->ahi.operationResult = MA_SUCCESS;
+            ma_event_signal(&pDevice->ahi.operationCompletionEvent);
+            ma_semaphore_release(&pDevice->ahi.operationSemaphore);
+            break;
+        }
+
+        /* Getting a signal on a "none" operation probably means an error. Return invalid operation. */
+        if (operation == MA_DEVICE_OP_NONE__AHI) {
+            MA_ASSERT(MA_FALSE);  /* <-- Trigger this in debug mode to ensure developers are aware they're doing something wrong (or there's a bug in a miniaudio). */
+            pDevice->ahi.operationResult = MA_INVALID_OPERATION;
+            ma_event_signal(&pDevice->ahi.operationCompletionEvent);
+            ma_semaphore_release(&pDevice->ahi.operationSemaphore);
+            continue;   /* Continue the loop. Don't terminate. */
+        }
+    }
+
+    return (ma_thread_result)0;
+}
+
+static ma_result ma_device_do_operation__ahi(ma_device* pDevice, ma_uint32 operation)
+{
+    ma_result result;
+
+    /*
+    TODO: Need to review this and consider just using mutual exclusion. I think the original motivation
+    for this was to just post the event to a queue and return immediately, but that has since changed
+    and now this function is synchronous. I think this can be simplified to just use a mutex.
+    */
+
+    /*
+    The first thing to do is wait for an operation slot to become available. We only have a single slot for this, but we could extend this later
+    to support queing of operations.
+    */
+    result = ma_semaphore_wait(&pDevice->ahi.operationSemaphore);
+    if (result != MA_SUCCESS) {
+        return result;  /* Failed to wait for the event. */
+    }
+
+    /*
+    When we get here it means the background thread is not referencing the operation code and it can be changed. After changing this we need to
+    signal an event to the worker thread to let it know that it can start work.
+    */
+    pDevice->ahi.operation = operation;
+
+    /* Once the operation code has been set, the worker thread can start work. */
+    if (ma_event_signal(&pDevice->ahi.operationEvent) != MA_SUCCESS) {
+        return MA_ERROR;
+    }
+
+    /* We want everything to be synchronous so we're going to wait for the worker thread to complete it's operation. */
+    if (ma_event_wait(&pDevice->ahi.operationCompletionEvent) != MA_SUCCESS) {
+        return MA_ERROR;
+    }
+
+    return pDevice->ahi.operationResult;
+}
+
+static ma_result ma_context_uninit__ahi(ma_context* pContext)
+{
+    MA_ASSERT(pContext != NULL);
+    MA_ASSERT(pContext->backend == ma_backend_ahi);
+
+    (void)pContext;
+    return MA_SUCCESS;
+}
+
+static ma_result ma_context_enumerate_devices__ahi(ma_context* pContext, ma_enum_devices_callback_proc callback, void* pUserData)
+{
+    ma_bool32 cbResult = MA_TRUE;
+
+    MA_ASSERT(pContext != NULL);
+    MA_ASSERT(callback != NULL);
+
+    /* Playback. */
+    if (cbResult) {
+        ma_device_info deviceInfo;
+        MA_ZERO_OBJECT(&deviceInfo);
+        ma_strncpy_s(deviceInfo.name, sizeof(deviceInfo.name), "AHI Playback Device", (size_t)-1);
+        deviceInfo.isDefault = MA_TRUE; /* Only one playback and capture device for the ahi backend, so might as well mark as default. */
+        cbResult = callback(pContext, ma_device_type_playback, &deviceInfo, pUserData);
+    }
+
+    /* Capture. */
+    if (cbResult) {
+        ma_device_info deviceInfo;
+        MA_ZERO_OBJECT(&deviceInfo);
+        ma_strncpy_s(deviceInfo.name, sizeof(deviceInfo.name), "AHI Capture Device", (size_t)-1);
+        deviceInfo.isDefault = MA_TRUE; /* Only one playback and capture device for the ahi backend, so might as well mark as default. */
+        cbResult = callback(pContext, ma_device_type_capture, &deviceInfo, pUserData);
+    }
+
+    (void)cbResult; /* Silence a static analysis warning. */
+
+    return MA_SUCCESS;
+}
+
+static ma_result ma_context_get_device_info__ahi(ma_context* pContext, ma_device_type deviceType, const ma_device_id* pDeviceID, ma_device_info* pDeviceInfo)
+{
+    MA_ASSERT(pContext != NULL);
+
+    if (pDeviceID != NULL && pDeviceID->ahi != 0) {
+        return MA_NO_DEVICE;   /* Don't know the device. */
+    }
+
+    /* Name / Description */
+    if (deviceType == ma_device_type_playback) {
+        ma_strncpy_s(pDeviceInfo->name, sizeof(pDeviceInfo->name), "AHI Playback Device", (size_t)-1);
+    } else {
+        ma_strncpy_s(pDeviceInfo->name, sizeof(pDeviceInfo->name), "AHI Capture Device", (size_t)-1);
+    }
+
+    pDeviceInfo->isDefault = MA_TRUE;   /* Only one playback and capture device for the ahi backend, so might as well mark as default. */
+
+    /* Support everything on the ahi backend. */
+    pDeviceInfo->nativeDataFormats[0].format     = ma_format_unknown;
+    pDeviceInfo->nativeDataFormats[0].channels   = 0;
+    pDeviceInfo->nativeDataFormats[0].sampleRate = 0;
+    pDeviceInfo->nativeDataFormats[0].flags      = 0;
+    pDeviceInfo->nativeDataFormatCount = 1;
+
+    (void)pContext;
+    return MA_SUCCESS;
+}
+
+static ma_result ma_device_uninit__ahi(ma_device* pDevice)
+{
+    MA_ASSERT(pDevice != NULL);
+    /* Keep it clean and wait for the device thread to finish before returning. */
+    ma_device_do_operation__ahi(pDevice, MA_DEVICE_OP_KILL__AHI);
+
+    /* Wait for the thread to finish before continuing. */
+    ma_thread_wait(&pDevice->ahi.deviceThread);
+
+    /* At this point the loop in the device thread is as good as terminated so we can uninitialize our events. */
+    ma_semaphore_uninit(&pDevice->ahi.operationSemaphore);
+    ma_event_uninit(&pDevice->ahi.operationCompletionEvent);
+    ma_event_uninit(&pDevice->ahi.operationEvent);
+
+    if (pDevice->ahi.audioBuffer[0]) {
+        FreeVec(pDevice->ahi.audioBuffer[0]);
+        pDevice->ahi.audioBuffer[0] = NULL;
+    }
+    if (pDevice->ahi.audioBuffer[1]) {
+        FreeVec(pDevice->ahi.audioBuffer[1]);
+        pDevice->ahi.audioBuffer[1] = NULL;
+    }
+
+    pDevice->ahi.deviceOpen = MA_FALSE;
+
+    return MA_SUCCESS;
+}
+
+static ma_uint32 ma_calculate_period_size_in_frames_from_descriptor__ahi(const ma_device_descriptor* pDescriptor, ma_uint32 nativeSampleRate, ma_performance_profile performanceProfile)
+{
+    ma_uint32 minPeriodSizeInFrames = ma_calculate_buffer_size_in_frames_from_milliseconds(MA_DEFAULT_PERIOD_SIZE_IN_MILLISECONDS_CONSERVATIVE, nativeSampleRate);
+    ma_uint32 periodSizeInFrames;
+
+    periodSizeInFrames = ma_calculate_buffer_size_in_frames_from_descriptor(pDescriptor, nativeSampleRate, performanceProfile);
+    if (periodSizeInFrames < minPeriodSizeInFrames) {
+        periodSizeInFrames = minPeriodSizeInFrames;
+    }
+
+    return periodSizeInFrames;
+}
+
+static ma_result ma_device_init__ahi(ma_device* pDevice, const ma_device_config* pConfig, ma_device_descriptor* pDescriptorPlayback, ma_device_descriptor* pDescriptorCapture)
+{
+    ma_result result = MA_SUCCESS;
+
+    MA_ASSERT(pDevice != NULL);
+    MA_ZERO_OBJECT(&pDevice->ahi);
+    
+    if (pConfig->deviceType == ma_device_type_loopback) {
+        return MA_DEVICE_TYPE_NOT_SUPPORTED;
+    }
+
+    if (pDevice->ahi.deviceOpen) {
+        return MA_ERROR;
+    }
+
+    /* The ahi backend supports everything exactly as we specify it. */
+    if (pConfig->deviceType == ma_device_type_capture || pConfig->deviceType == ma_device_type_duplex) {
+        pDescriptorCapture->format     = (pDescriptorCapture->format     != ma_format_unknown) ? pDescriptorCapture->format     : ma_format_s32;
+        pDescriptorCapture->channels   = (pDescriptorCapture->channels   != 0)                 ? pDescriptorCapture->channels   : MA_DEFAULT_CHANNELS;
+        pDescriptorCapture->sampleRate = (pDescriptorCapture->sampleRate != 0)                 ? pDescriptorCapture->sampleRate : MA_DEFAULT_SAMPLE_RATE;
+
+        if (pDescriptorCapture->channelMap[0] == MA_CHANNEL_NONE) {
+            ma_channel_map_init_standard(ma_standard_channel_map_default, pDescriptorCapture->channelMap, ma_countof(pDescriptorCapture->channelMap), pDescriptorCapture->channels);
+        }
+
+        pDescriptorCapture->periodSizeInFrames = ma_calculate_period_size_in_frames_from_descriptor__ahi(pDescriptorCapture, pDescriptorCapture->sampleRate, pConfig->performanceProfile);
+    }   
+
+    if (pConfig->deviceType == ma_device_type_playback || pConfig->deviceType == ma_device_type_duplex) {
+        pDescriptorPlayback->format     = /*(pDescriptorPlayback->format     != ma_format_unknown) ? pDescriptorPlayback->format     :*/ ma_format_u8;
+        pDescriptorPlayback->channels   = (pDescriptorPlayback->channels   != 0)                 ? pDescriptorPlayback->channels   : MA_DEFAULT_CHANNELS;
+        pDescriptorPlayback->sampleRate = (pDescriptorPlayback->sampleRate != 0)                 ? pDescriptorPlayback->sampleRate : MA_DEFAULT_SAMPLE_RATE;
+
+        if (pDescriptorPlayback->channelMap[0] == MA_CHANNEL_NONE) {
+            ma_channel_map_init_standard(ma_standard_channel_map_default, pDescriptorPlayback->channelMap, ma_countof(pDescriptorCapture->channelMap), pDescriptorPlayback->channels);
+        }
+
+        pDescriptorPlayback->periodSizeInFrames = ma_calculate_period_size_in_frames_from_descriptor__ahi(pDescriptorPlayback, pDescriptorPlayback->sampleRate, pConfig->performanceProfile);
+    }
+
+    switch(pDescriptorPlayback->format) {
+        case ma_format_u8:
+            pDevice->ahi.ahiType = (pDescriptorPlayback->channels < 2) ? AHIST_M8S : AHIST_S8S;
+            break;
+        case ma_format_s16:
+            pDevice->ahi.ahiType = (pDescriptorPlayback->channels < 2) ? AHIST_M16S : AHIST_S16S;
+            break;
+        case ma_format_s32:
+        case ma_format_f32: // check
+            pDescriptorPlayback->format = ma_format_s32;
+            pDevice->ahi.ahiType = (pDescriptorPlayback->channels < 2) ? AHIST_M32S : AHIST_S32S;
+            break;
+        default:
+            D("Unsupported format %ld\n", pDescriptorPlayback->format);
+            ma_device_uninit__ahi(pDevice);
+            return MA_ERROR;
+    }
+
+    pDevice->ahi.currentPeriodFramesRemainingPlayback = pDescriptorPlayback->periodSizeInFrames;
+
+    pDevice->ahi.deviceOpen = MA_FALSE;
+
+    /*
+    In order to get timing right, we need to create a thread that does nothing but keeps track of the timer. This timer is started when the
+    first period is "written" to it, and then stopped in ma_device_stop__ahi().
+    */
+    result = ma_event_init(&pDevice->ahi.operationEvent);
+    if (result != MA_SUCCESS) {
+        ma_device_uninit__ahi(pDevice);
+        return result;
+    }
+
+    result = ma_event_init(&pDevice->ahi.operationCompletionEvent);
+    if (result != MA_SUCCESS) {
+        ma_device_uninit__ahi(pDevice);
+        return result;
+    }
+
+    result = ma_semaphore_init(1, &pDevice->ahi.operationSemaphore);    /* <-- It's important that the initial value is set to 1. */
+    if (result != MA_SUCCESS) {
+        ma_device_uninit__ahi(pDevice);
+        return result;
+    }
+
+    result = ma_thread_create(&pDevice->ahi.deviceThread, pDevice->pContext->threadPriority, 0, ma_device_thread__ahi, pDevice, &pDevice->pContext->allocationCallbacks);
+    if (result != MA_SUCCESS) {
+        ma_device_uninit__ahi(pDevice);
+        return result;
+    }
+
+    return result;
+}
+
+static BOOL ma_device_is_started__ahi(ma_device* pDevice)
+{
+    MA_ASSERT(pDevice != NULL);
+
+    return ma_atomic_bool32_get(&pDevice->ahi.isStarted);
+}
+
+static ma_result ma_device_start__ahi(ma_device* pDevice)
+{
+    MA_ASSERT(pDevice != NULL);
+    //pDevice->ahi.ahiTask = FindTask(NULL);
+
+    ma_uint32 bpf = ma_get_bytes_per_frame(pDevice->playback.internalFormat, pDevice->playback.internalChannels);
+    ma_uint32 bufferSize;
+    if (pDevice->type == ma_device_type_playback) {
+        bufferSize = pDevice->playback.internalPeriodSizeInFrames * bpf * pDevice->playback.internalPeriods;
+    }
+    else {
+        bufferSize = pDevice->capture.internalPeriodSizeInFrames * bpf * pDevice->capture.internalPeriods;
+    }
+    pDevice->ahi.audioBuffer[0] = AllocVec(bufferSize, MEMF_PUBLIC);
+    pDevice->ahi.audioBuffer[1] = AllocVec(bufferSize, MEMF_PUBLIC);
+    pDevice->ahi.ahiRequestSent[0] = MA_FALSE;
+    pDevice->ahi.ahiRequestSent[1] = MA_FALSE;
+
+    if (pDevice->ahi.audioBuffer[0] == NULL || pDevice->ahi.audioBuffer[1] == NULL) {
+        if (pDevice->ahi.audioBuffer[0]) {
+            FreeVec(pDevice->ahi.audioBuffer[0]);
+            pDevice->ahi.audioBuffer[0] = NULL;
+        }
+        if (pDevice->ahi.audioBuffer[1]) {
+            FreeVec(pDevice->ahi.audioBuffer[1]);
+            pDevice->ahi.audioBuffer[1] = NULL;
+        }
+
+        D("No memory for audio buffer\n");
+        ma_device_uninit__ahi(pDevice);
+        return MA_ERROR;
+    }
+
+    MA_ZERO_OBJECT(pDevice->ahi.audioBuffer[0]);
+    MA_ZERO_OBJECT(pDevice->ahi.audioBuffer[1]);
+    
+    pDevice->ahi.ahiReplyPort = (struct MsgPort *) CreateMsgPort();
+    if (pDevice->ahi.ahiReplyPort) {
+        /* create a iorequest for the device */
+        pDevice->ahi.ahiRequest[0] = (struct AHIRequest *)
+            CreateIORequest(pDevice->ahi.ahiReplyPort, sizeof(struct AHIRequest));
+
+        if (pDevice->ahi.ahiRequest[0]) {
+            pDevice->ahi.ahiRequest[0]->ahir_Version = 4;
+            pDevice->ahi.ahiRequest[0]->ahir_Std.io_Message.mn_Node.ln_Pri = 0;
+            pDevice->ahi.ahiRequest[0]->ahir_Std.io_Command = CMD_WRITE;
+            pDevice->ahi.ahiRequest[0]->ahir_Volume         = 0x10000;
+            pDevice->ahi.ahiRequest[0]->ahir_Position       = 0x8000;
+            pDevice->ahi.ahiRequest[0]->ahir_Std.io_Offset  = 0;
+            pDevice->ahi.ahiRequest[0]->ahir_Frequency      = pDevice->playback.internalSampleRate;
+            pDevice->ahi.ahiRequest[0]->ahir_Type           = pDevice->ahi.ahiType;
+
+            if (!OpenDevice(AHINAME, 0, (struct IORequest *) pDevice->ahi.ahiRequest[0], 0)) {
+                /* Create a copy */
+                pDevice->ahi.ahiRequest[1] = (struct AHIRequest *) CreateIORequest(pDevice->ahi.ahiReplyPort, sizeof(struct AHIRequest));
+                if (pDevice->ahi.ahiRequest[1]) {
+                    CopyMem(pDevice->ahi.ahiRequest[0], pDevice->ahi.ahiRequest[1], sizeof(struct AHIRequest));
+                    pDevice->ahi.deviceOpen = MA_TRUE;
+                } else {
+                    D("Failed to duplicate IO request\n");
+                }
+            } else {
+                D("Failed to open %s\n", AHINAME);
+            }
+        } else {
+            D("Failed to create IO request\n");
+        }
+    } else {
+        D("Failed to create reply port\n");
+    }
+
+    if (!pDevice->ahi.deviceOpen) {
+        ma_device_uninit__ahi(pDevice);
+        return MA_ERROR;
+    }
+
+    ma_device_do_operation__ahi(pDevice, MA_DEVICE_OP_START__AHI);
+    ma_atomic_bool32_set(&pDevice->ahi.isStarted, MA_TRUE);
+
+    return MA_SUCCESS;
+}
+
+static ma_result ma_device_stop__ahi(ma_device* pDevice)
+{
+   MA_ASSERT(pDevice != NULL);
+   if (pDevice->ahi.ahiRequest[0]) {
+        if (pDevice->ahi.ahiRequest[1] && pDevice->ahi.ahiRequestSent[1] == MA_TRUE) {
+            AbortIO((struct IORequest *) pDevice->ahi.ahiRequest[1]);
+            WaitIO((struct IORequest *) pDevice->ahi.ahiRequest[1]);
+        }
+
+        CloseDevice((struct IORequest *)pDevice->ahi.ahiRequest[0]);
+
+        DeleteIORequest((struct IORequest *)pDevice->ahi.ahiRequest[0]);
+        pDevice->ahi.ahiRequest[0] = NULL;
+
+        if (pDevice->ahi.ahiRequest[1]) {
+            DeleteIORequest((struct IORequest *)pDevice->ahi.ahiRequest[1]);
+            pDevice->ahi.ahiRequest[1] = NULL;
+        }
+    }
+
+    if (pDevice->ahi.ahiReplyPort) {
+        DeleteMsgPort(pDevice->ahi.ahiReplyPort);;
+        pDevice->ahi.ahiReplyPort = NULL;
+    }
+
+    ma_device_do_operation__ahi(pDevice, MA_DEVICE_OP_SUSPEND__AHI);
+    ma_atomic_bool32_set(&pDevice->ahi.isStarted, MA_FALSE);
+
+    return MA_SUCCESS;
+}
+
+static ma_uint64 ma_device_get_total_run_time_in_frames__ahi(ma_device* pDevice)
+{
+    ma_uint32 internalSampleRate;
+    if (pDevice->type == ma_device_type_capture || pDevice->type == ma_device_type_duplex) {
+        internalSampleRate = pDevice->capture.internalSampleRate;
+    } else {
+        internalSampleRate = pDevice->playback.internalSampleRate;
+    }
+
+    double tis = ma_timer_get_time_in_seconds(&pDevice->ahi.timer);
+    ma_uint64 tmr = (ma_uint64) ((pDevice->ahi.priorRunTime + tis) * internalSampleRate);
+    return tmr;
+}
+
+static ma_result ma_device_write__ahi(ma_device* pDevice, const void* pPCMFrames, ma_uint32 frameCount, ma_uint32* pFramesWritten)
+{
+    ma_result result = MA_SUCCESS;
+    ma_uint32 totalPCMFramesProcessed;
+    ma_bool32 wasStartedOnEntry;
+    ULONG signals;
+
+    if (!pDevice)  {
+        D("Device not yet created\n");
+        return MA_ERROR;
+    }
+
+    if (!pDevice->ahi.deviceOpen) {
+        D("Device is not open\n");
+        return MA_ERROR;
+    }
+/*
+    if (FindTask(NULL) != pDevice->ahi.ahiTask)
+		printf("*** ERROR: Not called from same thread (%p vs %p)\n", 
+            FindTask(NULL), pDevice->ahi.ahiTask);
+*/
+    if (pFramesWritten != NULL) {
+        *pFramesWritten = 0;
+    }
+
+    wasStartedOnEntry = ma_device_is_started__ahi(pDevice);
+
+    /* Keep going until everything has been read. */
+    totalPCMFramesProcessed = 0;
+    while (totalPCMFramesProcessed < frameCount) {
+        ma_uint64 targetFrame;
+
+        /* If there are any frames remaining in the current period, consume those first. */
+        if (pDevice->ahi.currentPeriodFramesRemainingPlayback > 0) {
+            int current = pDevice->ahi.currentBuffer;
+            
+            ma_uint32 framesRemaining = (frameCount - totalPCMFramesProcessed);
+            ma_uint32 framesToProcess = pDevice->ahi.currentPeriodFramesRemainingPlayback;
+            if (framesToProcess > framesRemaining) {
+                framesToProcess = framesRemaining;
+            }
+            ma_uint32 bpf = ma_get_bytes_per_frame(pDevice->playback.internalFormat, pDevice->playback.internalChannels);
+            ma_uint32 len = framesToProcess * bpf;
+            MA_COPY_MEMORY(pDevice->ahi.audioBuffer[current] + (pDevice->ahi.currentPeriodFramesBufferedPlayback * bpf), pPCMFrames, len);
+
+            pDevice->ahi.currentPeriodFramesRemainingPlayback -= framesToProcess;
+            pDevice->ahi.currentPeriodFramesBufferedPlayback += framesToProcess;
+            totalPCMFramesProcessed += framesToProcess;
+        }
+
+        /* If we've consumed the current period play it. */
+        if (pDevice->ahi.currentPeriodFramesRemainingPlayback == 0 && pDevice->ahi.currentPeriodFramesBufferedPlayback > 0) {
+            if (!ma_device_is_started__ahi(pDevice) && !wasStartedOnEntry) {
+                result = ma_device_start__ahi(pDevice);
+                if (result != MA_SUCCESS) {
+                    break;
+                }
+            }
+
+            ma_uint32 bpf = ma_get_bytes_per_frame(pDevice->playback.internalFormat, pDevice->playback.internalChannels);
+            struct AHIRequest  *ahiRequest, *ahiOtherRequest;
+            int current = pDevice->ahi.currentBuffer;
+            ahiRequest = pDevice->ahi.ahiRequest[current];
+            ahiOtherRequest = pDevice->ahi.ahiRequest[current ^ 1];
+
+            ahiRequest->ahir_Std.io_Data    = pDevice->ahi.audioBuffer[current];
+            ahiRequest->ahir_Std.io_Length  = pDevice->ahi.currentPeriodFramesBufferedPlayback * bpf;
+            ahiRequest->ahir_Link           = ahiOtherRequest;
+
+            SendIO((struct IORequest *) ahiRequest);
+            pDevice->ahi.ahiRequestSent[current] = MA_TRUE;
+
+            /* Wait for the other buffer to finish finish first, if we ever actually send one off */
+            if (pDevice->ahi.ahiRequestSent[current ^ 1] == MA_TRUE) {
+                WaitIO((struct IORequest *) ahiOtherRequest);
+            }
+
+            pDevice->ahi.currentPeriodFramesBufferedPlayback = 0;
+            pDevice->ahi.currentBuffer ^= 1;
+        }
+
+        /* If we've consumed the whole buffer we can return now. */
+        MA_ASSERT(totalPCMFramesProcessed <= frameCount);
+        if (totalPCMFramesProcessed == frameCount) {
+            break;
+        }
+
+        /* Getting here means we've still got more frames to consume, we but need to wait for it to become available. */
+        targetFrame = pDevice->ahi.lastProcessedFramePlayback;
+        for (;;) {
+            ma_uint64 currentFrame = ma_device_get_total_run_time_in_frames__ahi(pDevice);
+            if (currentFrame >= targetFrame) {
+                break;
+            }
+
+            /* Stop waiting if the device has been stopped. */
+            if (!ma_device_is_started__ahi(pDevice)) {
+                break;
+            }
+
+            /* Getting here means we haven't yet reached the target sample, so continue waiting. */
+            ma_sleep(10);
+        }
+
+        pDevice->ahi.lastProcessedFramePlayback          += pDevice->playback.internalPeriodSizeInFrames;
+        pDevice->ahi.currentPeriodFramesRemainingPlayback = pDevice->playback.internalPeriodSizeInFrames;
+    }
+
+    if (pFramesWritten != NULL) {
+        *pFramesWritten = totalPCMFramesProcessed;
+    }
+
+    return result;
+}
+
+static ma_result ma_device_read__ahi(ma_device* pDevice, void* pPCMFrames, ma_uint32 frameCount, ma_uint32* pFramesRead)
+{
+    return MA_SUCCESS;
+}
+
+static ma_result ma_context_init__ahi(ma_context* pContext, const ma_context_config* pConfig, ma_backend_callbacks* pCallbacks) {
+    MA_ASSERT(pContext != NULL);
+
+    (void)pConfig;
+    (void)pContext;
+
+    pCallbacks->onContextInit             = ma_context_init__ahi;
+    pCallbacks->onContextUninit           = ma_context_uninit__ahi;
+    pCallbacks->onContextEnumerateDevices = ma_context_enumerate_devices__ahi;
+    pCallbacks->onContextGetDeviceInfo    = ma_context_get_device_info__ahi;
+    pCallbacks->onDeviceInit              = ma_device_init__ahi;
+    pCallbacks->onDeviceUninit            = ma_device_uninit__ahi;
+    pCallbacks->onDeviceStart             = ma_device_start__ahi;
+    pCallbacks->onDeviceStop              = ma_device_stop__ahi;
+    pCallbacks->onDeviceRead              = ma_device_read__ahi;
+    pCallbacks->onDeviceWrite             = ma_device_write__ahi;
+    pCallbacks->onDeviceDataLoop          = NULL;   /* Our backend is asynchronous with a blocking read-write API which means we can get miniaudio to deal with the audio thread. */
+
+    /* The AHI backend always works. */
+    return MA_SUCCESS;
+}
+
+#endif
 /*******************************************************************************
 
 Null Backend
@@ -41359,6 +42039,12 @@ MA_API ma_result ma_context_init(const ma_backend backends[], ma_uint32 backendC
                 pContext->callbacks.onContextInit = ma_context_init__webaudio;
             } break;
         #endif
+        #ifdef MA_HAS_AHI
+            case ma_backend_ahi:
+            {
+                pContext->callbacks.onContextInit = ma_context_init__ahi;
+            } break;
+        #endif        
         #ifdef MA_HAS_CUSTOM
             case ma_backend_custom:
             {
@@ -59405,7 +60091,7 @@ static ma_result ma_default_vfs_tell__stdio(ma_vfs* pVFS, ma_vfs_file file, ma_i
     return MA_SUCCESS;
 }
 
-#if !defined(_MSC_VER) && !((defined(_POSIX_C_SOURCE) && _POSIX_C_SOURCE >= 1) || defined(_XOPEN_SOURCE) || defined(_POSIX_SOURCE)) && !defined(MA_BSD)
+#if !defined(__MORPHOS__) && !defined(_MSC_VER) && !((defined(_POSIX_C_SOURCE) && _POSIX_C_SOURCE >= 1) || defined(_XOPEN_SOURCE) || defined(_POSIX_SOURCE)) && !defined(MA_BSD)
 int fileno(FILE *stream);
 #endif
 
@@ -77341,6 +78027,8 @@ static MA_INLINE int ma_dr_wav__is_little_endian(void)
     return MA_TRUE;
 #elif defined(__BYTE_ORDER) && defined(__LITTLE_ENDIAN) && __BYTE_ORDER == __LITTLE_ENDIAN
     return MA_TRUE;
+#elif defined(__BYTE_ORDER) && defined(__BIG_ENDIAN) && __BYTE_ORDER == __BIG_ENDIAN
+    return MA_FALSE;
 #else
     int n = 1;
     return (*(char*)&n) == 1;

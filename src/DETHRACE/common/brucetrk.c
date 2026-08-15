@@ -316,7 +316,150 @@ br_uintptr_t LollipopizeChildren(br_actor* pActor, void* pArg) {
     LollipopizeActor4(pActor, maa->m, maa->a);
     return 0;
 }
+typedef struct {
+    br_matrix34* m;
+    br_actor* a;
+} tMatrix_and_actors;
 
+
+void DrawColumns_NoBlend(tTrack_spec* pTrack_spec, int pMin_x, int pMax_x, int pMin_z, int pMax_z, br_matrix34* pCamera_to_world) {
+    tU8 column_x, column_z, column_x2, column_z2;
+    tMatrix_and_actor maa;
+    maa.m = pCamera_to_world;
+
+    int x_direction = (pCamera_to_world->m[2][0] <= 0.0) ? -1 : 1;
+    int z_direction = (pCamera_to_world->m[2][2] <= 0.0) ? -1 : 1;
+    int start_x = (x_direction > 0) ? pMin_x : pMax_x;
+    int start_z = (z_direction > 0) ? pMin_z : pMax_z;
+    int end_x = (x_direction > 0) ? pMax_x : pMin_x;
+    int end_z = (z_direction > 0) ? pMax_z : pMin_z;
+
+
+    if (fabs(pCamera_to_world->m[2][2]) >= fabs(pCamera_to_world->m[2][0])) {
+      for (column_z = start_z; (z_direction > 0) ? column_z <= end_z : column_z >= end_z; column_z+=z_direction) {
+        for (column_x = start_x; (x_direction > 0) ? column_x <= end_x : column_x >= end_x; column_x+=x_direction) {
+              if (pCamera_to_world->m[2][0] <= 0.0) {
+                column_x2 = pMin_x + pMax_x - column_x;
+            } else {
+                column_x2 = column_x;
+            }
+            if (pCamera_to_world->m[2][2] <= 0.0) {
+                column_z2 = pMax_z + pMin_z - column_z;
+            } else {
+                column_z2 = column_z;
+            }
+              if (pTrack_spec->columns[column_z2][column_x2]) {
+                    BrZbSceneRenderAdd(pTrack_spec->columns[column_z2][column_x2]);
+                }
+                if (pTrack_spec->lollipops[column_z2][column_x2]) {
+                    maa.a = pTrack_spec->lollipops[column_z2][column_x2];
+                   BrActorEnum(pTrack_spec->lollipops[column_z2][column_x2], LollipopizeChildren, &maa);
+                   BrZbSceneRenderAdd(pTrack_spec->lollipops[column_z2][column_x2]);
+                }
+            }
+        }
+    } else {
+
+       for (column_x = start_x; (x_direction > 0) ? column_x <= end_x : column_x >= end_x; column_x+=x_direction) {
+          for (column_z = start_z; (z_direction > 0) ? column_z <= end_z : column_z >= end_z; column_z+=z_direction) {
+
+            if (pCamera_to_world->m[2][0] <= 0.0) {
+                column_x2 = pMin_x + pMax_x - column_x;
+            } else {
+                column_x2 = column_x;
+            }
+            if (pCamera_to_world->m[2][2] <= 0.0) {
+                column_z2 = pMax_z + pMin_z - column_z;
+            } else {
+                column_z2 = column_z;
+            }
+                if (pTrack_spec->columns[column_z2][column_x2]) {
+                    BrZbSceneRenderAdd(pTrack_spec->columns[column_z2][column_x2]);
+                }
+                if (pTrack_spec->lollipops[column_z2][column_x2]) {
+                    maa.a = pTrack_spec->lollipops[column_z2][column_x2];
+                    BrActorEnum(pTrack_spec->lollipops[column_z2][column_x2], LollipopizeChildren, &maa);
+                    BrZbSceneRenderAdd(pTrack_spec->lollipops[column_z2][column_x2]);
+                }
+          }
+        }
+
+    }
+
+}
+
+
+void DrawColumns_Blended(tTrack_spec* pTrack_spec, int pMin_x, int pMax_x, int pMin_z, int pMax_z, br_matrix34* pCamera_to_world) {
+    tU8 column_x, column_z, column_x2, column_z2;
+    br_actor* blended_polys;
+
+    int x_direction = (pCamera_to_world->m[2][0] <= 0.0) ? -1 : 1;
+    int z_direction = (pCamera_to_world->m[2][2] <= 0.0) ? -1 : 1;
+    int start_x = (x_direction > 0) ? pMin_x : pMax_x;
+    int start_z = (z_direction > 0) ? pMin_z : pMax_z;
+    int end_x = (x_direction > 0) ? pMax_x : pMin_x;
+    int end_z = (z_direction > 0) ? pMax_z : pMin_z;
+
+    if (fabs(pCamera_to_world->m[2][2]) >= fabs(pCamera_to_world->m[2][0])) {
+
+        for (column_z = start_z; (z_direction > 0) ? column_z <= end_z : column_z >= end_z; column_z+=z_direction) {
+             for (column_x = start_x; (x_direction > 0) ? column_x <= end_x : column_x >= end_x; column_x+=x_direction) {
+
+                  if (pCamera_to_world->m[2][0] <= 0.0) {
+                    column_x2 = pMin_x + pMax_x - column_x;
+                } else {
+                    column_x2 = column_x;
+                }
+                if (pCamera_to_world->m[2][2] <= 0.0) {
+                    column_z2 = pMax_z + pMin_z - column_z;
+                } else {
+                    column_z2 = column_z;
+                }
+                blended_polys = pTrack_spec->blends[column_z2][column_x2];
+                if (blended_polys) {
+                   blended_polys->render_style = BR_RSTYLE_FACES;
+                   BrZbSceneRenderAdd(blended_polys);
+                   blended_polys->render_style = BR_RSTYLE_NONE;
+               }
+            }
+         }
+    } else {
+        for (column_x = start_x; (x_direction > 0) ? column_x <= end_x : column_x >= end_x; column_x+=x_direction) {
+             for (column_z = start_z; (z_direction > 0) ? column_z <= end_z : column_z >= end_z; column_z+=z_direction) {
+                    if (pCamera_to_world->m[2][0] <= 0.0) {
+                        column_x2 = pMin_x + pMax_x - column_x;
+                    } else {
+                        column_x2 = column_x;
+                    }
+                    if (pCamera_to_world->m[2][2] <= 0.0) {
+                        column_z2 = pMax_z + pMin_z - column_z;
+                    } else {
+                         column_z2 = column_z;
+                    }
+
+                    blended_polys = pTrack_spec->blends[column_z2][column_x2];
+                    if (blended_polys) {
+                        blended_polys->render_style = BR_RSTYLE_FACES;
+                       BrZbSceneRenderAdd(blended_polys);
+                        blended_polys->render_style = BR_RSTYLE_NONE;
+                   }
+            }
+        }
+    }
+
+}
+
+void DrawColumns_(int pDraw_blends, tTrack_spec* pTrack_spec, int pMin_x, int pMax_x, int pMin_z, int pMax_z, br_matrix34* pCamera_to_world) {
+    LOG_TRACE("(%d, %p, %d, %d, %d, %d, %p)", pDraw_blends, pTrack_spec, pMin_x, pMax_x, pMin_z, pMax_z, pCamera_to_world);
+    if (pDraw_blends)
+    {
+      DrawColumns_Blended(pTrack_spec, pMin_x,  pMax_x,  pMin_z,  pMax_z, pCamera_to_world);
+    }
+    else
+    {
+      DrawColumns_NoBlend(pTrack_spec, pMin_x,  pMax_x,  pMin_z,  pMax_z, pCamera_to_world);
+    }
+}
 // IDA: void __usercall DrawColumns(int pDraw_blends@<EAX>, tTrack_spec *pTrack_spec@<EDX>, int pMin_x@<EBX>, int pMax_x@<ECX>, int pMin_z, int pMax_z, br_matrix34 *pCamera_to_world)
 void DrawColumns(int pDraw_blends, tTrack_spec* pTrack_spec, int pMin_x, int pMax_x, int pMin_z, int pMax_z, br_matrix34* pCamera_to_world) {
     tU8 column_x;
@@ -326,9 +469,10 @@ void DrawColumns(int pDraw_blends, tTrack_spec* pTrack_spec, int pMin_x, int pMa
     tMatrix_and_actor maa;
     br_actor* blended_polys;
     LOG_TRACE("(%d, %p, %d, %d, %d, %d, %p)", pDraw_blends, pTrack_spec, pMin_x, pMax_x, pMin_z, pMax_z, pCamera_to_world);
-
+//printf("DrawColumns\n");
     maa.m = pCamera_to_world;
     if (fabs(pCamera_to_world->m[2][2]) >= fabs(pCamera_to_world->m[2][0])) {
+        //printf("DrawColumns 1\n");
         for (column_z = pMin_z; column_z <= pMax_z; ++column_z) {
             for (column_x = pMin_x; column_x <= pMax_x; ++column_x) {
                 if (pCamera_to_world->m[2][0] <= 0.0) {
@@ -346,21 +490,27 @@ void DrawColumns(int pDraw_blends, tTrack_spec* pTrack_spec, int pMin_x, int pMa
                     if (blended_polys) {
                         blended_polys->render_style = BR_RSTYLE_FACES;
                         BrZbSceneRenderAdd(blended_polys);
+                        //printf("DrawColumns 2\n");
                         blended_polys->render_style = BR_RSTYLE_NONE;
                     }
                 } else {
                     if (pTrack_spec->columns[column_z2][column_x2]) {
+                        //printf("DrawColumns 3\n");
                         BrZbSceneRenderAdd(pTrack_spec->columns[column_z2][column_x2]);
                     }
                     if (pTrack_spec->lollipops[column_z2][column_x2]) {
                         maa.a = pTrack_spec->lollipops[column_z2][column_x2];
+                        //printf("DrawColumns 4\n");
                         BrActorEnum(pTrack_spec->lollipops[column_z2][column_x2], LollipopizeChildren, &maa);
+                        //printf("DrawColumns 5\n");
                         BrZbSceneRenderAdd(pTrack_spec->lollipops[column_z2][column_x2]);
+                        //printf("DrawColumns 6\n");
                     }
                 }
             }
         }
     } else {
+        //printf("DrawColumns 7\n");
         for (column_x = pMin_x; column_x <= pMax_x; ++column_x) {
             for (column_z = pMin_z; column_z <= pMax_z; ++column_z) {
                 if (pCamera_to_world->m[2][0] <= 0.0) {
@@ -377,6 +527,7 @@ void DrawColumns(int pDraw_blends, tTrack_spec* pTrack_spec, int pMin_x, int pMa
                     blended_polys = pTrack_spec->blends[column_z2][column_x2];
                     if (blended_polys) {
                         blended_polys->render_style = BR_RSTYLE_FACES;
+                        //printf("DrawColumns 8\n");
                         BrZbSceneRenderAdd(blended_polys);
                         blended_polys->render_style = BR_RSTYLE_NONE;
                     }
@@ -393,8 +544,12 @@ void DrawColumns(int pDraw_blends, tTrack_spec* pTrack_spec, int pMin_x, int pMa
             }
         }
     }
-}
 
+}
+float tanf_(float x)
+{
+    return (float)tan((double)x);
+}
 // IDA: void __usercall RenderTrack(br_actor *pWorld@<EAX>, tTrack_spec *pTrack_spec@<EDX>, br_actor *pCamera@<EBX>, br_matrix34 *pCamera_to_world@<ECX>, int pRender_blends)
 void RenderTrack(br_actor* pWorld, tTrack_spec* pTrack_spec, br_actor* pCamera, br_matrix34* pCamera_to_world, int pRender_blends) {
     static tU8 column_x;
@@ -412,9 +567,11 @@ void RenderTrack(br_actor* pWorld, tTrack_spec* pTrack_spec, br_actor* pCamera, 
 
     if (pTrack_spec->columns != NULL) {
         if (pRender_blends) {
+            //printf("RenderTrack 0\n");
             DrawColumns(1, pTrack_spec, min_x, max_x, min_z, max_z, pCamera_to_world);
         } else {
             camera = (br_camera*)pCamera->type_data;
+            //printf("RenderTrack 1\n");
             XZToColumnXZ(&column_x, &column_z, pCamera_to_world->m[3][0], pCamera_to_world->m[3][2], pTrack_spec);
             min_x = column_x;
             max_x = column_x;
@@ -427,6 +584,7 @@ void RenderTrack(br_actor* pWorld, tTrack_spec* pTrack_spec, br_actor* pCamera, 
             edge_before.v[0] = camera->yon_z * gYon_factor * edge_after.v[0];
             edge_before.v[1] = camera->yon_z * gYon_factor * tan_fov_ish;
             edge_before.v[2] = camera->yon_z * gYon_factor * -1.0;
+            //printf("RenderTrack 2\n");
             BrMatrix34ApplyV(&edge_after, &edge_before, pCamera_to_world);
             XZToColumnXZ(&column_x, &column_z, pCamera_to_world->m[3][0] + edge_after.v[0], pCamera_to_world->m[3][2] + edge_after.v[2], pTrack_spec);
             if (column_x < min_x) {
@@ -492,9 +650,11 @@ void RenderTrack(br_actor* pWorld, tTrack_spec* pTrack_spec, br_actor* pCamera, 
             if (pTrack_spec->ncolumns_z - 1 > max_z) {
                 max_z++;
             }
+            //printf("RenderTrack 3\n");
             DrawColumns(0, pTrack_spec, min_x, max_x, min_z, max_z, pCamera_to_world);
         }
     } else {
+        //printf("RenderTrack 4\n");
         BrZbSceneRenderAdd(pWorld);
     }
 }

@@ -73,6 +73,12 @@ int S3LoadSample(tS3_sound_id id) {
         sample->dataptr = buf;
         sample->size = gS3_last_file_length;
     }
+#ifdef  AMIGA
+    //convert to signed
+    for (int i = 0; i < sample->size; i++) {
+    sample->dataptr[i] ^= 0x80;
+    }
+#endif
 
     // win95
     // descriptor->sound_buffer = S3LoadWavFile(filename, sample);
@@ -302,7 +308,8 @@ int S3PlaySample(tS3_channel* chan) {
             sound_data->dataptr,
             sound_data->size,
             sound_data->rate,
-            chan->repetitions == 0)
+            chan->repetitions == 0,
+            0)
         != eAB_success) {
         return 0;
     }
@@ -362,6 +369,11 @@ int S3SyncSampleVolumeAndPan(tS3_channel* chan) {
     if (chan->type != eS3_ST_sample) {
         return 1;
     }
+
+    if (AudioBackend_SetVolumeSeparate(chan->type_struct_sample, chan->left_volume, chan->right_volume) == eAB_success) {
+        return 1;
+    }
+
     total_vol = chan->left_volume + chan->right_volume;
     if (total_vol == 0.0f) {
         total_vol = 1.0f;

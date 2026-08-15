@@ -17,6 +17,7 @@
 #include "utility.h"
 #include <stdlib.h>
 #include <time.h>
+#include <stdbool.h>
 
 tS32 gLast_demo_end_anim = -90000;
 
@@ -128,8 +129,9 @@ void PlaySmackerFile(char* pSmack_name) {
         } else {
             dr_dprintf("Smack file '%s' failed to open", pSmack_name);
         }
-        StartMusic();
+        //StartMusic();
     }
+    StartMusic();
 }
 
 // IDA: void __cdecl DoOpeningAnimation()
@@ -236,14 +238,19 @@ void DoDemoGoodbye(void) {
     }
 }
 
+bool loading_palette = false;
+
 // IDA: void __cdecl StartLoadingScreen()
 void StartLoadingScreen(void) {
     LOG_TRACE("()");
 
     PossibleService();
+
+    loading_palette = true; //for HAM
     if (gProgram_state.sausage_eater_mode) {
         SplashScreenWith(harness_game_info.defines.GERMAN_LOADSCRN);
     } else {
         SplashScreenWith("LOADSCRN.PIX");
     }
+    loading_palette = false; //for HAM
 }

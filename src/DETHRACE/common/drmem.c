@@ -310,6 +310,7 @@ void* DRStdlibAllocate(br_size_t size, br_uint_8 type) {
 // IDA: void __cdecl DRStdlibFree(void *mem)
 void DRStdlibFree(void* mem) {
     int i;
+  //  if (mem) //arczi: added this check
     free(mem);
 }
 

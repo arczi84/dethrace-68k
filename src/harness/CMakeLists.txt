@@ -2,7 +2,7 @@ configure_file(version.h.in version.h @ONLY)
 
 add_library(harness STATIC)
 
-set(IO_PLATFORM "SDL2" CACHE STRING "Dethrace IO platform")
+set(IO_PLATFORM "SDL12" CACHE STRING "Dethrace IO platform")
 
 target_include_directories(harness
     PRIVATE
@@ -19,14 +19,16 @@ endif()
 
 target_link_libraries(harness PRIVATE brender miniaudio stb compile_with_werror)
 
-if(CMAKE_C_COMPILER_ID MATCHES ".*(GNU|Clang).*")
+if(NOT MSVC)
     target_compile_options(harness PRIVATE
         -Wall
         -Wextra
         -Wno-unused-parameter
     )
-    add_compile_flag_if_supported(harness -Wstrict-prototypes LANGUAGES C)
-elseif(MSVC)
+    add_compile_flags_if_supported(harness
+        -Wstrict-prototypes
+    )
+else()
     target_compile_definitions(harness PRIVATE -D_CRT_SECURE_NO_WARNINGS)
 endif()
 
@@ -54,8 +56,8 @@ target_sources(harness PRIVATE
     audio/miniaudio.c
     win95/polyfill.c
     win95/winsock.c
-    platforms/null.c
-    platforms/null.h
+    #platforms/null.c
+    #platforms/null.h
 
     "${CMAKE_CURRENT_BINARY_DIR}/version.h"
 )
@@ -78,6 +80,10 @@ elseif(IO_PLATFORM STREQUAL "SDL12")
         platforms/sdl12_scancode_to_dinput.h
     )
     target_link_libraries(harness PRIVATE SDL::SDL)
+elseif (IO_PLATFORM STREQUAL "Amiga")
+    target_sources(harness PRIVATE
+        platforms/amiga.c
+    )
 else()
     message(FATAL_ERROR "Unknown IO_PLATFORM=${IO_PLATFORM}")
 endif()

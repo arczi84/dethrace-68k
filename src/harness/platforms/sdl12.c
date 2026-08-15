@@ -5,16 +5,16 @@
 #include "harness/hooks.h"
 #include "harness/trace.h"
 #include "sdl12_scancode_to_dinput.h"
+#include <proto/intuition.h>
+#include <inline/intuition.h>
 
 #ifdef _WIN32
 #include <windows.h>
 #endif
 SDL_Surface* screen;
-//SDL_Renderer* renderer;
-//SDL_Texture* screen_texture;
 uint32_t converted_palette[256];
 br_pixelmap* last_screen_src;
-int render_width, render_height;
+int render_width, render_height, depth;
 
 Uint32 last_frame_time;
 
@@ -24,6 +24,11 @@ static void* create_window_and_renderer(char* title, int x, int y, int width, in
     int video_flags = 0;
     render_width = width;
     render_height = height;
+
+    if (depth == 8) {
+        video_flags = SDL_HWPALETTE;
+    }
+    LOG_INFO("Using %d bit mode", depth);
 
     initializeSDL12KeyNums();
 
@@ -35,29 +40,12 @@ static void* create_window_and_renderer(char* title, int x, int y, int width, in
         video_flags |= SDL_FULLSCREEN;
     }
 
-    screen = SDL_SetVideoMode(width, height, 32, video_flags);
+    screen = SDL_SetVideoMode(width, height, depth, video_flags);
     SDL_WM_SetCaption("Carmageddon", NULL);
 
     if (screen == NULL) {
         LOG_PANIC("SDL_SetVideoMode failed (%s)", SDL_GetError());
     }
-
-//    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
-//    if (renderer == NULL) {
-//        LOG_PANIC("Failed to create renderer: %s", SDL_GetError());
-//    }
-//    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
-//    SDL_RenderSetLogicalSize(renderer, render_width, render_height);
-
-//    screen_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height);
-//    if (screen_texture == NULL) {
-//        SDL_RendererInfo info;
-//        SDL_GetRendererInfo(renderer, &info);
-//        for (Uint32 i = 0; i < info.num_texture_formats; i++) {
-//            LOG_INFO("%s\n", SDL_GetPixelFormatName(info.texture_formats[i]));
-//        }
-//        LOG_PANIC("Failed to create screen_texture: %s", SDL_GetError());
-//    }
 
     return screen;
 }
@@ -68,13 +56,13 @@ static int set_window_pos(void* hWnd, int x, int y, int nWidth, int nHeight) {
         nWidth = 640;
         nHeight = 400;
     }
-    SDL_UpdateRect(hWnd, x, y, nWidth, nHeight);
+   // SDL_UpdateRect(hWnd, x, y, nWidth, nHeight);
     return 0;
 }
 
 static void destroy_window(void* hWnd) {
-    // SDL_GL_DeleteContext(context);
     SDL_FreeSurface(screen);
+    SDL_Quit();
     screen = NULL;
 }
 
@@ -171,26 +159,97 @@ static void limit_fps(void) {
     }
     last_frame_time = SDL_GetTicks();
 }
+static unsigned int dim = 0;
 
-static void present_screen(br_pixelmap* src) {
+static void present_screen32(br_pixelmap* src) {
     // fastest way to convert 8 bit indexed to 32 bit
     uint8_t* src_pixels = src->pixels;
     uint32_t* dest_pixels;
-
-    SDL_LockSurface(screen);
+    if (dim == 0)
+        dim = src->height * src->width;
+    //uint16_t* dest_pixels;
+   // SDL_LockSurface(screen);
     dest_pixels = screen->pixels;
-//    SDL_LockTexture(screen_texture, NULL, (void**)&dest_pixels, &dest_pitch);
-    for (int i = 0; i < src->height * src->width; i++) {
+
+   for (unsigned int i = 0; i < dim; i++) {
         *dest_pixels = converted_palette[*src_pixels];
         dest_pixels++;
         src_pixels++;
     }
-    SDL_UnlockSurface(screen);
+    /*for (int i = 0; i < dim; i += 4) {
+    dest_pixels[0] = converted_palette[src_pixels[0]];
+    dest_pixels[1] = converted_palette[src_pixels[1]];
+    dest_pixels[2] = converted_palette[src_pixels[2]];
+    dest_pixels[3] = converted_palette[src_pixels[3]];
+    dest_pixels += 4;
+    src_pixels += 4;
+}*/
+   // SDL_UnlockSurface(screen);
 
-//    SDL_UnlockTexture(screen_texture);
-//    SDL_RenderClear(renderer);
-//    SDL_RenderCopy(renderer, screen_texture, NULL, NULL);
-//    SDL_RenderPresent(renderer);
+    SDL_Flip(screen);
+
+    last_screen_src = src;
+
+    if (harness_game_config.fps != 0) {
+        limit_fps();
+    }
+}
+static void set_palette32(PALETTEENTRY_* pal) {
+
+    for (int i = 0; i < 256; i++) {
+            converted_palette[i] = (0xff << 24 | pal[i].peRed << 16 | pal[i].peGreen << 8 | pal[i].peBlue);
+        }
+
+    if (last_screen_src != NULL) {
+        present_screen32(last_screen_src);
+    }
+}
+
+static void present_screen16(br_pixelmap* src) {
+    // fastest way to convert 8 bit indexed to 16 bit
+    uint8_t* src_pixels = src->pixels;
+//    uint32_t* dest_pixels;
+    uint16_t* dest_pixels;
+    //SDL_LockSurface(screen);
+    dest_pixels = screen->pixels;
+    if (dim == 0)
+        dim = src->height * src->width;
+    
+    for (unsigned int i = 0; i < dim; i++) {
+        *dest_pixels = converted_palette[*src_pixels];
+        dest_pixels++;
+        src_pixels++;
+    }
+    //SDL_UnlockSurface(screen);
+
+    SDL_Flip(screen);
+
+    last_screen_src = src;
+
+    if (harness_game_config.fps != 0) {
+        limit_fps();
+    }
+}
+static void set_palette16(PALETTEENTRY_* pal) {
+    for (int i = 0; i < 256; i++) {
+        converted_palette[i] = ((pal[i].peRed >> 3 << 11) | (pal[i].peGreen >> 2 << 5) | pal[i].peBlue >> 3);
+    }
+
+    if (last_screen_src != NULL) {
+        present_screen16(last_screen_src);
+    }
+}
+
+static void present_screen8(br_pixelmap* src) {
+    //uint8_t* src_pixels = src->pixels;
+    uint8_t* dest_pixels;
+    //SDL_LockSurface(screen);
+    dest_pixels = (uint8_t*)screen->pixels;
+
+    memcpy(dest_pixels, src->pixels/*src_pixels*/, src->height * src->width);
+    //CopyMem(src->pixels, dest_pixels, src->height * src->width);
+    //SDL_UnlockSurface(screen);
+
     SDL_Flip(screen);
 
     last_screen_src = src;
@@ -200,21 +259,35 @@ static void present_screen(br_pixelmap* src) {
     }
 }
 
-static void set_palette(PALETTEENTRY_* pal) {
+static void set_palette8(PALETTEENTRY_* pal) {
+    SDL_Color colors[256];
     for (int i = 0; i < 256; i++) {
-        converted_palette[i] = (0xff << 24 | pal[i].peRed << 16 | pal[i].peGreen << 8 | pal[i].peBlue);
+        colors[i].r = pal[i].peRed;
+        colors[i].g = pal[i].peGreen;
+        colors[i].b = pal[i].peBlue;
     }
+    SDL_SetPalette(screen, SDL_LOGPAL | SDL_PHYSPAL, colors, 0, 256);
+
     if (last_screen_src != NULL) {
-        present_screen(last_screen_src);
+        present_screen8(last_screen_src);
     }
 }
 
 int show_error_message(void* window, char* text, char* caption) {
-    fprintf(stderr, "%s", text);
+    //fprintf(stderr, "%s", text);
 #ifdef _WIN32
     MessageBoxA(NULL, text, caption, MB_ICONERROR);
 #endif
 //    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, caption, text, window);
+
+    struct EasyStruct es = {
+        sizeof(struct EasyStruct), 0,
+        (unsigned char*)caption,
+          (unsigned char*)text,
+            (unsigned char*)"Abort",
+    }; 
+    EasyRequest(NULL, &es, NULL);
+
     return 0;
 }
 
@@ -229,8 +302,27 @@ void Harness_Platform_Init(tHarness_platform* platform) {
     platform->GetKeyboardState = get_keyboard_state;
     platform->GetMousePosition = get_mouse_position;
     platform->GetMouseButtons = get_mouse_buttons;
-    platform->DestroyWindow = destroy_window;
     platform->ShowErrorMessage = show_error_message;
-    platform->Renderer_SetPalette = set_palette;
-    platform->Renderer_Present = present_screen;
+    depth = harness_game_config.bpp;
+    if (depth > 31)
+        depth = 32;
+    else if (depth > 15 && depth < 32)
+        depth = 16;
+     else
+        depth = 8;
+
+    if (depth == 8) {
+        platform->Renderer_SetPalette = set_palette8;
+        platform->Renderer_Present = present_screen8;
+
+    }
+    else if (depth == 16) {
+        platform->Renderer_SetPalette = set_palette16;
+        platform->Renderer_Present = present_screen16;
+    }
+    else {
+        platform->Renderer_SetPalette = set_palette32;
+        platform->Renderer_Present = present_screen32;
+    }
+
 }

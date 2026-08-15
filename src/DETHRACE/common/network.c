@@ -185,7 +185,7 @@ void NetSendHeadupToEverybody(char* pMessage) {
         return;
     }
     if (gProgram_state.racing) {
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 3000, -4, pMessage);
+        NewTextHeadupSlot(4, 0, 3000, -4, pMessage);
     }
     the_contents = NetGetBroadcastContents(NETMSGID_HEADUP, 0);
     strcpy(the_contents->data.headup.text, pMessage);
@@ -201,7 +201,7 @@ void NetSendHeadupToPlayer(char* pMessage, tPlayer_ID pPlayer) {
     }
     if (gLocal_net_ID == pPlayer) {
         if (gProgram_state.racing) {
-            NewTextHeadupSlot(eHeadupSlot_misc, 0, 3000, -4, pMessage);
+            NewTextHeadupSlot(4, 0, 3000, -4, pMessage);
         }
     } else {
         message = NetBuildMessage(NETMSGID_HEADUP, 0);
@@ -661,11 +661,11 @@ int NetJoinGameLowLevel(tNet_game_details* pDetails, char* pPlayer_name) {
     return PDNetJoinGame(pDetails, pPlayer_name);
 }
 
-DR_STATIC_ASSERT(offsetof(tNet_message_join, player_info) == 4);
-DR_STATIC_ASSERT(offsetof(tNet_game_player_info, this_players_time_stamp) == 0x10);
-DR_STATIC_ASSERT(offsetof(tNet_game_player_info, wasted) == 0x68);
-DR_STATIC_ASSERT(offsetof(tNet_game_player_info, initial_position) == 0x8c);
-DR_STATIC_ASSERT(offsetof(tNet_game_player_info, car) == 0xbc);
+//DR_STATIC_ASSERT(offsetof(tNet_message_join, player_info) == 4);
+//DR_STATIC_ASSERT(offsetof(tNet_game_player_info, this_players_time_stamp) == 0x10);
+//DR_STATIC_ASSERT(offsetof(tNet_game_player_info, wasted) == 0x68);
+//DR_STATIC_ASSERT(offsetof(tNet_game_player_info, initial_position) == 0x8c);
+//DR_STATIC_ASSERT(offsetof(tNet_game_player_info, car) == 0xbc);
 
 // IDA: int __usercall NetJoinGame@<EAX>(tNet_game_details *pDetails@<EAX>, char *pPlayer_name@<EDX>, int pCar_index@<EBX>)
 int NetJoinGame(tNet_game_details* pDetails, char* pPlayer_name, int pCar_index) {
@@ -1487,7 +1487,7 @@ void ReceivedHeadup(tNet_contents* pContents) {
     LOG_TRACE("(%p)", pContents);
 
     if (gProgram_state.racing) {
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 3000, -4, pContents->data.headup.text);
+        NewTextHeadupSlot(4, 0, 3000, -4, pContents->data.headup.text);
     }
 }
 
@@ -1651,7 +1651,7 @@ void ReceivedWasted(tNet_contents* pContents) {
         } else {
             sprintf(s, "%s %s %s", victim->player_name, GetMiscString(kMiscString_WastedBy), culprit ? culprit->player_name : GetMiscString(kMiscString_COP));
         }
-        NewTextHeadupSlot2(eHeadupSlot_misc, 0, 3000, -4, s, 0);
+        NewTextHeadupSlot2(4, 0, 3000, -4, s, 0);
         last_wasty_message_time = PDGetTotalTime();
         last_culprit = culprit;
         last_victim = victim;
@@ -1891,7 +1891,7 @@ void CheckForDisappearees(void) {
                 NetSendHeadupToAllPlayers(s);
                 KickPlayerOut(gNet_players[i].ID);
                 if (gProgram_state.racing) {
-                    NewTextHeadupSlot(eHeadupSlot_misc, 0, 3000, -4, s);
+                    NewTextHeadupSlot(4, 0, 3000, -4, s);
                 }
             }
         }
@@ -2062,7 +2062,7 @@ int NetGuaranteedSendMessageToAddress(tNet_game_details* pDetails, tNet_message*
     pMessage->senders_time_stamp = PDGetTotalTime();
     if (gNext_guarantee >= COUNT_OF(gGuarantee_list)) {
         sprintf(buffer, "Guarantee list full %d", pMessage->contents.header.type);
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 500, -1, buffer);
+        NewTextHeadupSlot(4, 0, 500, -1, buffer);
         pMessage->guarantee_number = 0;
         return 0;
     }

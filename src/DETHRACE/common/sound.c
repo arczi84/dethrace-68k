@@ -52,6 +52,10 @@ void UsePathFileToDetermineIfFullInstallation(void) {
     // char line2[80];
     // char line3[80];
     // char path_file[80];
+#ifdef AMIGA
+    gCD_fully_installed = 1;
+    return; //arczi
+#endif
     char line1[MAX_PATH_LENGTH];
     char line2[MAX_PATH_LENGTH];
     char line3[MAX_PATH_LENGTH];

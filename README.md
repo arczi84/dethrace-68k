@@ -32,19 +32,21 @@ No, well, I don't think so at least. The original files according to the symbol 
 
 ## Game content
 
-Dethrace does not ship with any content. You'll need access to the data from the original game. If you don't have an original CD then you can [buy Carmageddon from GoG.com](https://www.gog.com/game/carmageddon_max_pack).
+Dethrace does not ship with any game content. You'll need access to the data from the original game. If you don't have an original CD then you can [buy Carmageddon from GoG.com](https://www.gog.com/game/carmageddon_max_pack).
 
 `dethrace` also supports the various freeware demos:
 - [Original Carmageddon demo](https://rr2000.cwaboard.co.uk/R4/PC/carmdemo.zip)
 - [Splat Pack demo](https://rr2000.cwaboard.co.uk/R4/PC/splatdem.zip)
 - [Splat Pack Xmas demo](https://rr2000.cwaboard.co.uk/R4/PC/Splatpack_christmas_demo.zip)
 
+Lots of other fun things are available from the [Road Reaction site](https://rr2000.cwaboard.co.uk/pc-files#c1)
 
-## Building
 
-### Dependencies
+## Dependencies
 
-Dethrace has a dependency on SDL2. The easiest way to install SDL is via your favorite package manager.
+### SDL2
+
+The easiest way to install SDL is via your favorite package manager.
 
 OSX:
 ```sh
@@ -57,14 +59,15 @@ apt-get install libsdl2-dev
 ```
 
 
+
 Point Dethrace at the Carmageddon install directory:
 ```sh
 export DETHRACE_ROOT_DIR=/path/to/carmageddon
 ```
 
-### Clone
+## Build
 
-Dethrace uses [git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules), so we must pull them after the inital clone:
+Dethrace uses git submodules, so we must pull them after the inital clone:
 ```sh
 git clone https://github.com/dethrace-labs/dethrace
 cd dethrace
@@ -85,21 +88,82 @@ Once cmake has generated the build files for your platform, run the build. For e
 make
 ```
 
-## Running the game
+### AmigaOS 3 (m68k)
 
-Firstly, you need a copy of the [Carmageddon game content](https://github.com/dethrace-labs/dethrace?tab=readme-ov-file#game-content). Extract the zip file if necessary.
+The Amiga port is available on the `amiga` branch and supports CyberGraphX,
+native AGA and HAM6 output.
 
-Dethrace expects to be placed into the top level Carmageddon folder. You know you have the right folder when you see the original `CARMA.EXE` there. If you are on Windows, you must also place `SDL2.dll` in the same folder.
+Use CMake 3.23 or newer and bebbo's GCC 6.5.0b build `241006`. The newer GCC
+build `250215` is known to produce an executable which hangs during a race.
+The default toolchain location is `/opt/amiga-debian`.
 
-<img width="638" alt="Screenshot 2024-09-20 at 12 25 05 PM" src="https://github.com/user-attachments/assets/fda77818-9007-44fa-9d8d-c311396fd435">
+The support directory defaults to `/mnt/d/amiga-gcc2` and must contain:
 
-### CD audio
+- `include/`
+- `lib/c2p1x1_4_c5_bm.o`
+- `lib/c2p1x1_8_c5_bm_040.o`
+- `lib/c2p1x1_6_c5_bm_040.o`
 
-Dethrace supports the GOG cd audio convention. If there is a `MUSIC` folder in the Carmageddon folder containing files `Track02.ogg`, `Track03.ogg` etc, then Dethrace will use those files in place of the original CD audio functions.
+Configure and build:
 
-<img width="571" alt="Screenshot 2024-09-30 at 8 31 59 AM" src="https://github.com/user-attachments/assets/cec72203-9156-4c2a-a15a-328609e65c68">
+```sh
+cmake -S . -B build-amiga \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/amiga-gcc6.cmake \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DIO_PLATFORM=Amiga \
+  -DDETHRACE_FIX_BUGS=ON
+cmake --build build-amiga -j4
+/opt/amiga-debian/bin/m68k-amigaos-strip --strip-all build-amiga/dethrace
+```
+
+Override the local toolchain and support paths when necessary:
+
+```sh
+cmake -S . -B build-amiga \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/amiga-gcc6.cmake \
+  -DM68K_TOOLCHAIN_PATH=/path/to/amiga-gcc \
+  -DAMIGA_SUPPORT_PATH=/path/to/amiga-support \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DIO_PLATFORM=Amiga
+```
+
+Video modes:
+
+- CyberGraphX 8-bit: `--bpp=8`
+- native AGA: `--aga`
+- HAM6: `--bpp=6`
+
+### Run
+
+After building, `build/dethrace` is created
+
+```sh
+./dethrace [args]
+```
 
 
+## Run tests
+
+A subset of tests do not require `DETHRACE_ROOT_DIR`. They run via Github actions when code is committed to this repo. This allows us to keep nice and clean and avoid storing any potentially legally problematic resouces in our repo.
+
+The majority of tests _do_ require `DETHRACE_ROOT_DIR`.
+
+To run the full test suite, you must have a copy of the original *Splat Pack* data.
+
+```sh
+export DETHRACE_ROOT_DIR=/path/to/carmageddon_splat_pack
+```
+
+To run
+
+```sh
+./dethrace_test
+```
+
+To run a single test
+```sh
+DETHRACE_TEST_ARGS="-n test_name" make test
+```
 
 ## Changelog
 [From the beginning until release](docs/CHANGELOG.md)

@@ -1951,6 +1951,7 @@ void FadePaletteDown(void) {
             }
             i = 256 - ((the_time * 256) / 500);
             SetFadedPalette(i);
+            //printf("Fading down %d\n", i);
         }
         SetFadedPalette(0);
         gFaded_palette = 1;
@@ -3009,16 +3010,16 @@ void ToggleShadow(void) {
     }
     switch (gShadow_level) {
     case eShadow_none:
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 2000, -4, GetMiscString(kMiscString_NoShadows));
+        NewTextHeadupSlot(4, 0, 2000, -4, GetMiscString(kMiscString_NoShadows));
         break;
     case eShadow_us_only:
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 2000, -4, GetMiscString(kMiscString_ShadowUnderOwnCar));
+        NewTextHeadupSlot(4, 0, 2000, -4, GetMiscString(kMiscString_ShadowUnderOwnCar));
         break;
     case eShadow_us_and_opponents:
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 2000, -4, GetMiscString(kMiscString_ShadowUnderMainCars));
+        NewTextHeadupSlot(4, 0, 2000, -4, GetMiscString(kMiscString_ShadowUnderMainCars));
         break;
     case eShadow_everyone:
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 2000, -4, GetMiscString(kMiscString_ShadowUnderAllCars));
+        NewTextHeadupSlot(4, 0, 2000, -4, GetMiscString(kMiscString_ShadowUnderAllCars));
         break;
     default:
         return;
@@ -3089,9 +3090,9 @@ void ShadowMode(void) {
 
     gFancy_shadow = !gFancy_shadow;
     if (gFancy_shadow) {
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 2000, -4, "Translucent shadow");
+        NewTextHeadupSlot(4, 0, 2000, -4, "Translucent shadow");
     } else {
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 2000, -4, "Solid shadow");
+        NewTextHeadupSlot(4, 0, 2000, -4, "Solid shadow");
     }
 }
 

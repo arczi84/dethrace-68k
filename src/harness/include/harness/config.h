@@ -45,8 +45,10 @@ typedef struct tHarness_game_config {
     int gore_check;
     int sound_options;
     int no_bind;
-    int no_music;
     int verbose;
+    int bpp;
+    int aga_screen;
+    int custom_screen;
 
     int install_signalhandler;
 } tHarness_game_config;

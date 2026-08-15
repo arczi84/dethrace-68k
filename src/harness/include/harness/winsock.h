@@ -23,6 +23,7 @@
 #include <sys/types.h>
 #include <unistd.h> // for close()
 
+//#define closesocket(x) close(x)
 #define WSAEISCONN EISCONN
 #define WSAEINPROGRESS EINPROGRESS
 #define WSAEALREADY EALREADY

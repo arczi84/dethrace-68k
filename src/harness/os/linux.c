@@ -6,13 +6,16 @@
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
-#include <err.h>
+#warning "no err.r" 
+//#include <err.h>
 #include <errno.h>
-#include <execinfo.h>
+#warning "no execinfo.h"
+//#include <execinfo.h>
 #include <fcntl.h>
 #include <libgen.h>
 #include <limits.h>
-#include <link.h>
+#warning "no link.h"
+//#include <link.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -24,6 +27,18 @@
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
+
+#if (__GNUC__ == 4)
+// Kod dla GCC w wersji 4
+#error
+
+typedef struct {
+    int si_signo;    // Numer sygnału
+    int si_code;     // Kod informujący o przyczynie sygnału
+    void *si_addr;   // Adres, którego dotyczy sygnał (np. naruszenie dostępu)
+    int si_errno;    // Kod błędu związany z sygnałem
+} siginfo_t;
+#endif
 
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof(A[0]))
 #define MAX_STACK_FRAMES 64
@@ -42,17 +57,18 @@ struct dl_iterate_callback_data {
 
 static int dl_iterate_callback(struct dl_phdr_info* info, size_t size, void* data) {
     struct dl_iterate_callback_data* callback_data = data;
-
+#if 0
     if (strcmp(info->dlpi_name, "") == 0) {
         callback_data->start = info->dlpi_addr;
     }
+#endif    
     return 0;
 }
 
 static intptr_t get_dethrace_offset(void) {
     if (!dethrace_dl_data.initialized) {
         dethrace_dl_data.initialized = 1;
-        dl_iterate_phdr(dl_iterate_callback, &dethrace_dl_data);
+      //  dl_iterate_phdr(dl_iterate_callback, &dethrace_dl_data);
     }
     return dethrace_dl_data.start;
 }
@@ -69,6 +85,7 @@ int addr2line(char const* const program_name, void const* const addr) {
 }
 
 static void print_stack_trace(void) {
+    #if 0
     int i, trace_size = 0;
     char** messages = (char**)NULL;
 
@@ -87,9 +104,11 @@ static void print_stack_trace(void) {
     if (messages) {
         free(messages);
     }
+    #endif
 }
 
 static void signal_handler(int sig, siginfo_t* siginfo, void* context) {
+#if 0
     (void)context;
     fputs("\n******************\n", stderr);
 
@@ -174,6 +193,7 @@ static void signal_handler(int sig, siginfo_t* siginfo, void* context) {
     fputs("******************\n", stderr);
     print_stack_trace();
     exit(1);
+#endif	
 }
 
 void resolve_full_path(char* path, const char* argv0) {
@@ -191,7 +211,8 @@ void resolve_full_path(char* path, const char* argv0) {
 
 void OS_InstallSignalHandler(char* program_name) {
     resolve_full_path(_program_name, program_name);
-
+#warning "no signal"
+#if 0
     /* setup alternate stack */
     {
         stack_t ss = {};
@@ -234,6 +255,7 @@ void OS_InstallSignalHandler(char* program_name) {
             err(1, "sigaction");
         }
     }
+    #endif
 }
 
 FILE* OS_fopen(const char* pathname, const char* mode) {
@@ -260,11 +282,13 @@ FILE* OS_fopen(const char* pathname, const char* mode) {
         }
     }
     closedir(pDir);
+    //printf("OS_fopen: %s\n", pDirName);
     if (harness_game_config.verbose) {
         if (f == NULL) {
             fprintf(stderr, "Failed to open \"%s\" (%s)\n", pathname, strerror(errno));
         }
     }
+
     return f;
 }
 
@@ -312,14 +336,17 @@ size_t OS_ConsoleReadPassword(char* pBuffer, size_t pBufferLen) {
 
 char* OS_Dirname(const char* path) {
     strcpy(name_buf, path);
+    printf("OS_Dirname: %s\n", name_buf);
     return dirname(name_buf);
 }
 
 char* OS_Basename(const char* path) {
     strcpy(name_buf, path);
+    printf("OS_Basename: %s\n", name_buf);
     return basename(name_buf);
 }
 
 char* OS_GetWorkingDirectory(char* argv0) {
+    printf("argv0: %s\n", argv0);
     return OS_Dirname(argv0);
 }

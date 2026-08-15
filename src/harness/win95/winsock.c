@@ -27,5 +27,4 @@ int ioctlsocket(int handle, long cmd, unsigned long* argp) {
 int closesocket(int handle) {
     return close(handle);
 }
-
 #endif

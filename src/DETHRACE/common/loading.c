@@ -3001,7 +3001,7 @@ void GetFourInts(FILE* pF, int* pF1, int* pF2, int* pF3, int* pF4) {
 
 // IDA: br_scalar __usercall GetAScalar@<ST0>(FILE *pF@<EAX>)
 br_scalar GetAScalar(FILE* pF) {
-    LOG_TRACE("(%p)", pF);
+    //LOG_TRACE("(%p)", pF);
 
     return GetAFloat(pF);
 }
@@ -3206,7 +3206,7 @@ FILE* OldDRfopen(char* pFilename, char* pMode) {
     tPath_name CD_dir;
     tPath_name path_file;
     tPath_name source_check;
-    static int source_exists = 1;
+    static int source_exists = 0;// arczi was 1  (1 means we haven't checked the CD yet)
     int len;
     char ch;
 
@@ -3342,6 +3342,9 @@ FILE* DRfopen(char* pFilename, char* pMode) {
 
 // IDA: int __usercall GetCDPathFromPathsTxtFile@<EAX>(char *pPath_name@<EAX>)
 int GetCDPathFromPathsTxtFile(char* pPath_name) {
+#ifdef AMIGA    
+    memcpy(pPath_name, "PROGDIR:", 256);
+#else    
     static int got_it_already = 0;
     static tPath_name cd_pathname;
     FILE* paths_txt_fp;
@@ -3359,6 +3362,8 @@ int GetCDPathFromPathsTxtFile(char* pPath_name) {
         got_it_already = 1;
     }
     memcpy(pPath_name, cd_pathname, 256);
+    printf("pPath_name = %s \n", pPath_name);
+#endif   
     return 1;
 }
 
@@ -3366,6 +3371,9 @@ int GetCDPathFromPathsTxtFile(char* pPath_name) {
 int TestForOriginalCarmaCDinDrive(void) {
     // The symbol dump didn't include any local variable information.
     // These names are not necessarily the original names.
+#ifdef AMIGA
+    return 1;
+#endif
     tPath_name cd_pathname;
     tPath_name cd_data_pathname;
     tPath_name cutscene_pathname;
@@ -3386,7 +3394,7 @@ int TestForOriginalCarmaCDinDrive(void) {
     if (!PDCheckDriveExists(paths_txt)) {
         return 0;
     }
-
+#ifndef AMIGA
     paths_txt_fp = fopen(paths_txt, "rt");
     if (!paths_txt_fp) {
         return 0;
@@ -3395,6 +3403,7 @@ int TestForOriginalCarmaCDinDrive(void) {
     ungetc(paths_txt_first_char, paths_txt_fp);
     GetALineAndDontArgue(paths_txt_fp, cd_pathname);
     fclose(paths_txt_fp);
+#endif    
     strcpy(cd_data_pathname, cd_pathname);
     strcat(cd_data_pathname, gDir_separator);
     strcat(cd_data_pathname, "DATA");
@@ -3447,7 +3456,7 @@ int CarmaCDinDriveOrFullGameInstalled(void) {
 
 // IDA: void __usercall ReadNetworkSettings(FILE *pF@<EAX>, tNet_game_options *pOptions@<EDX>)
 void ReadNetworkSettings(FILE* pF, tNet_game_options* pOptions) {
-    LOG_TRACE("(%p, %p)", pF, pOptions);
+    //LOG_TRACE("(%p, %p)", pF, pOptions);
 
     pOptions->enable_text_messages = GetAnInt(pF);
     pOptions->show_players_on_map = GetAnInt(pF);
@@ -3526,6 +3535,8 @@ int SaveOptions(void) {
     BAIL_IF_NEGATIVE(fprintf(f, "NetName 0\n%s\n", (gNet_player_name[0] == '\0') ? "RON TURN" : gNet_player_name));
     BAIL_IF_NEGATIVE(fprintf(f, "EVolume %d\n", gProgram_state.effects_volume));
     BAIL_IF_NEGATIVE(fprintf(f, "MVolume %d\n", gProgram_state.music_volume));
+    BAIL_IF_NEGATIVE(fprintf(f, "CDAudioDevice 1\n%s\n", (cd_audio_device[0] == '\0') ? "uaescsi.device" : cd_audio_device));
+    BAIL_IF_NEGATIVE(fprintf(f, "CDAudioUnit %d\n", cd_audio_unit));  
     BAIL_IF_NEGATIVE(fprintf(f, "KeyMapIndex %d\n", gKey_map_index));
 
     BAIL_IF_NEGATIVE(fprintf(f, "NETGAMETYPE %d\n", gLast_game_type));
@@ -3609,6 +3620,12 @@ int RestoreOptions(void) {
                 gProgram_state.effects_volume = (int)arg;
             } else if (!strcmp(token, "MVolume")) {
                 gProgram_state.music_volume = (int)arg;
+            } else if (!strcmp(token, "CDAudioDevice")) {
+                fgets(line, 80, f);
+                s = strtok(line, "\n\r");
+                strcpy(cd_audio_device, s);
+            } else if (!strcmp(token, "CDAudioUnit")) {
+                cd_audio_unit = (int)arg;
             } else if (!strcmp(token, "KeyMapIndex")) {
                 gKey_map_index = (int)arg;
             } else if (!strcmp(token, "Joystick_min1x")) {

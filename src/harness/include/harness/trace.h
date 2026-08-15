@@ -27,9 +27,12 @@ void debug_print_matrix4(const char* fmt, const char* fn, char* name, br_matrix4
     if (harness_debug_level >= 9) {                            \
         debug_printf("[TRACE] %s", __FUNCTION__, __VA_ARGS__); \
     }
-
 #define LOG_TRACE8(...)                                        \
     if (harness_debug_level >= 8) {                            \
+        debug_printf("[TRACE] %s", __FUNCTION__, __VA_ARGS__); \
+    }
+#define LOG_TRACE3(...)                                         \
+    if (harness_debug_level >= 3) {                            \
         debug_printf("[TRACE] %s", __FUNCTION__, __VA_ARGS__); \
     }
 

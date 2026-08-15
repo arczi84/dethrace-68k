@@ -124,7 +124,11 @@ HANDLE_ FindFirstFileA_(char* lpFileName, WIN32_FIND_DATAA_* lpFindFileData) {
     return hFile;
 #else
     DIR* dir;
-    strcpy(lpFileName, ".");
+#ifdef AMIGA
+    strcpy(lpFileName, "");
+#else
+    strcpy(lpFileName, ".");            
+#endif
     dir = opendir(lpFileName);
     if (dir == NULL) {
         return INVALID_HANDLE_VALUE;

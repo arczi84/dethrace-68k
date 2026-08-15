@@ -350,6 +350,14 @@ int Chance(float pChance_per_second, int pPeriod) {
     return FRandomBetween(0.f, 1.f) < (pPeriod * pChance_per_second / 1000.f);
 }
 
+//#define memmove(d, s, n)	bcopy((s), (d), (n))  
+// IDA: void __usercall memmove2(void *pDest@<EAX>, void *pSrc@<EDX>, int pSize@<EBX>)
+void __bcopz_(const void* src, void* dest, size_t n) {
+    //bcopy(src, dest, n);
+    memmove(dest, src, n);
+}
+
+
 // IDA: float __cdecl tandeg(float pAngle)
 float tandeg(float pAngle) {
     LOG_TRACE("(%f)", pAngle);

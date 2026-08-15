@@ -75,9 +75,9 @@ void ToggleInfo(void) {
 
 // IDA: void __cdecl CalculateFrameRate()
 void CalculateFrameRate(void) {
-    static tU32 last_time;
+    static tU32 last_time = 0;
+    static int last_rates[30] = {0};
     tU32 new_time;
-    static int last_rates[30];
     int new_rate;
     int i;
     LOG_TRACE("()");
@@ -144,6 +144,7 @@ void MungeHeadups(void) {
 
     ClearHeadupSlot(3);
     gMr_odo = (double)gFrame_period * gProgram_state.current_car.speedo_speed * WORLD_SCALE / 1600.0 + gMr_odo;
+    //gInfo_on = 1;
     if (gInfo_on) {
         bearing = 360.0 - FastScalarArcTan2(gCamera_to_world.m[0][2], gCamera_to_world.m[2][2]);
         if (gInfo_mode) {
@@ -171,7 +172,9 @@ void MungeHeadups(void) {
         }
         ChangeHeadupText(gProgram_state.frame_rate_headup, the_text);
     } else {
-        ChangeHeadupText(gProgram_state.frame_rate_headup, "");
+        // Gdy `gInfo_on` jest `false`, wyświetlamy tylko FPS
+        sprintf(the_text, "FPS: %.1f", gFrame_rate / 10.0f);
+        ChangeHeadupText(gProgram_state.frame_rate_headup, the_text);
     }
     net_credits = gProgram_state.credits_earned - gProgram_state.credits_lost;
     if (fabs((double)(gProgram_state.credits_earned - gProgram_state.credits_lost) - (double)gLast_credit_headup__mainloop) / (double)gFrame_period > 1.2) {
@@ -194,7 +197,7 @@ void MungeHeadups(void) {
         }
         if (gCountdown != new_countdown && new_countdown <= 5) {
             gCountdown = new_countdown;
-            NewImageHeadupSlot(eHeadupSlot_countdown, 0, 800, new_countdown + 4);
+            NewImageHeadupSlot(5, 0, 800, new_countdown + 4);
             DRS3StartSound(gPedestrians_outlet, gCountdown + 8000);
             if (!new_countdown) {
                 MakeFlagWavingBastardWaveHisFlagWhichIsTheProbablyTheLastThingHeWillEverDo();
@@ -468,8 +471,8 @@ int MungeRaceFinished(void) {
             return 1;
         }
         gRace_finished = 15 * gTimer + 4500;
-        gRace_bonus_headup = NewTextHeadupSlot(eHeadupSlot_race_bonus, 0, 0, -4, "");
-        gTime_bonus_headup = NewTextHeadupSlot(eHeadupSlot_time_bonus, 0, 0, -4, "");
+        gRace_bonus_headup = NewTextHeadupSlot(9, 0, 0, -4, "");
+        gTime_bonus_headup = NewTextHeadupSlot(10, 0, 0, -4, "");
         gTime_bonus = 0;
         gTime_bonus_start = GetTotalTime();
         gTime_bonus_state = eTime_bonus_initial_pause;
@@ -604,6 +607,7 @@ tRace_result MainGameLoop(void) {
             EnsurePaletteUp();
         }
         DoNetGameManagement();
+        
         if (KeyIsDown(KEYMAP_ESCAPE) && !gEntering_message) {
             WaitForNoKeys();
             if (gAction_replay_mode) {

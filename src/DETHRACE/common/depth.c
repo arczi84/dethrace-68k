@@ -142,7 +142,9 @@ void InstantDepthChange(tDepth_effect_type pType, br_pixelmap* pSky_texture, int
 br_scalar Tan(br_scalar pAngle) {
     LOG_TRACE("(%f)", pAngle);
 
-    return sinf(BrAngleToRadian(pAngle)) / cosf(BrAngleToRadian(pAngle));
+    //return sinf(BrAngleToRadian(pAngle)) / cosf(BrAngleToRadian(pAngle));
+    //return tanf(BrAngleToRadian(pAngle));
+    return FastScalarTanAngle(pAngle);
 }
 
 // IDA: br_scalar __usercall EdgeU@<ST0>(br_angle pSky@<EAX>, br_angle pView@<EDX>, br_angle pPerfect@<EBX>)
@@ -690,7 +692,7 @@ void LessDepthFactor(void) {
         gProgram_state.current_depth_effect.start--;
     }
     sprintf(s, "Depth start reduced to %d", gProgram_state.current_depth_effect.start);
-    NewTextHeadupSlot(eHeadupSlot_misc, 0, 500, -1, s);
+    NewTextHeadupSlot(4, 0, 500, -1, s);
     gProgram_state.default_depth_effect.start = gProgram_state.current_depth_effect.start;
 }
 
@@ -703,7 +705,7 @@ void MoreDepthFactor(void) {
         gProgram_state.current_depth_effect.start++;
     }
     sprintf(s, "Depth start increased to %d", gProgram_state.current_depth_effect.start);
-    NewTextHeadupSlot(eHeadupSlot_misc, 0, 500, -1, s);
+    NewTextHeadupSlot(4, 0, 500, -1, s);
     gProgram_state.default_depth_effect.start = gProgram_state.current_depth_effect.start;
 }
 
@@ -716,7 +718,7 @@ void LessDepthFactor2(void) {
         gProgram_state.current_depth_effect.end++;
     }
     sprintf(s, "Depth end reduced to %d", gProgram_state.current_depth_effect.end);
-    NewTextHeadupSlot(eHeadupSlot_misc, 0, 500, -1, s);
+    NewTextHeadupSlot(4, 0, 500, -1, s);
     gProgram_state.default_depth_effect.end = gProgram_state.current_depth_effect.end;
 }
 
@@ -729,7 +731,7 @@ void MoreDepthFactor2(void) {
         gProgram_state.current_depth_effect.end--;
     }
     sprintf(s, "Depth end increased to %d", gProgram_state.current_depth_effect.end);
-    NewTextHeadupSlot(eHeadupSlot_misc, 0, 500, -1, s);
+    NewTextHeadupSlot(4, 0, 500, -1, s);
     gProgram_state.default_depth_effect.end = gProgram_state.current_depth_effect.end;
 }
 
@@ -757,7 +759,7 @@ void IncreaseYon(void) {
     camera_ptr = gCamera_list[1]->type_data;
     i = (int)camera_ptr->yon_z;
     sprintf(s, GetMiscString(kMiscString_YonIncreasedTo_D), i);
-    NewTextHeadupSlot(eHeadupSlot_misc, 0, 2000, -4, s);
+    NewTextHeadupSlot(4, 0, 2000, -4, s);
 }
 
 // IDA: void __cdecl DecreaseYon()
@@ -775,14 +777,14 @@ void DecreaseYon(void) {
     camera_ptr = gCamera_list[1]->type_data;
     i = (int)camera_ptr->yon_z;
     sprintf(s, GetMiscString(kMiscString_YonDecreasedTo_D), i);
-    NewTextHeadupSlot(eHeadupSlot_misc, 0, 2000, -4, s);
+    NewTextHeadupSlot(4, 0, 2000, -4, s);
 }
 
 // IDA: void __cdecl SetYon(br_scalar pYon)
 void SetYon(br_scalar pYon) {
     int i;
     br_camera* camera_ptr;
-    LOG_TRACE("(%d)", pYon);
+    LOG_TRACE("(%f)", pYon);
 
     if (pYon < 5.0f) {
         pYon = 5.0f;
@@ -822,7 +824,7 @@ void IncreaseAngle(void) {
 #else
         sprintf(s, "Camera angle increased to %d", gProgram_state.current_depth_effect.end);
 #endif
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 500, -1, s);
+        NewTextHeadupSlot(4, 0, 500, -1, s);
     }
 }
 
@@ -844,7 +846,7 @@ void DecreaseAngle(void) {
 #else
         sprintf(s, "Camera angle decreased to %d", gProgram_state.current_depth_effect.end);
 #endif
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 500, -1, s);
+        NewTextHeadupSlot(4, 0, 500, -1, s);
     }
 }
 
@@ -855,16 +857,16 @@ void ToggleDepthMode(void) {
     switch (gProgram_state.current_depth_effect.type) {
     case eDepth_effect_none:
         InstantDepthChange(eDepth_effect_darkness, gProgram_state.current_depth_effect.sky_texture, 8, 0);
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 500, -1, "Darkness mode");
+        NewTextHeadupSlot(4, 0, 500, -1, "Darkness mode");
         break;
     case eDepth_effect_darkness:
         InstantDepthChange(eDepth_effect_none, gProgram_state.current_depth_effect.sky_texture, 0, 0);
         InstantDepthChange(eDepth_effect_fog, gProgram_state.current_depth_effect.sky_texture, 10, 0);
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 500, -1, "Fog mode");
+        NewTextHeadupSlot(4, 0, 500, -1, "Fog mode");
         break;
     case eDepth_effect_fog:
         InstantDepthChange(eDepth_effect_none, gProgram_state.current_depth_effect.sky_texture, 0, 0);
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 500, -1, "Depth effects disabled");
+        NewTextHeadupSlot(4, 0, 500, -1, "Depth effects disabled");
         break;
     }
     gProgram_state.default_depth_effect.type = gProgram_state.current_depth_effect.type;
@@ -921,11 +923,11 @@ void ToggleSky(void) {
 
     SetSkyTextureOn(!GetSkyTextureOn());
     if (gProgram_state.current_depth_effect.sky_texture != NULL) {
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 2000, -4, GetMiscString(kMiscString_SkyTextureOn));
+        NewTextHeadupSlot(4, 0, 2000, -4, GetMiscString(kMiscString_SkyTextureOn));
     } else if (gSwap_sky_texture != NULL) {
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 2000, -4, GetMiscString(kMiscString_SkyTextureOff));
+        NewTextHeadupSlot(4, 0, 2000, -4, GetMiscString(kMiscString_SkyTextureOff));
     } else {
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 2000, -4, GetMiscString(kMiscString_ThereIsNoSkyTextureForThisRace));
+        NewTextHeadupSlot(4, 0, 2000, -4, GetMiscString(kMiscString_ThereIsNoSkyTextureForThisRace));
     }
 }
 
@@ -973,11 +975,11 @@ void ToggleDepthCueing(void) {
 
     SetDepthCueingOn(!GetDepthCueingOn());
     if (gProgram_state.current_depth_effect.type != eDepth_effect_none) {
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 2000, -4, GetMiscString(kMiscString_DepthCueingOn));
+        NewTextHeadupSlot(4, 0, 2000, -4, GetMiscString(kMiscString_DepthCueingOn));
     } else if (gSwap_depth_effect_type != eDepth_effect_none) {
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 2000, -4, GetMiscString(kMiscString_DepthCueingOff));
+        NewTextHeadupSlot(4, 0, 2000, -4, GetMiscString(kMiscString_DepthCueingOff));
     } else {
-        NewTextHeadupSlot(eHeadupSlot_misc, 0, 2000, -4, GetMiscString(kMiscString_ThereIsNoDepthCueingForThisRace));
+        NewTextHeadupSlot(4, 0, 2000, -4, GetMiscString(kMiscString_ThereIsNoDepthCueingForThisRace));
     }
 }
 

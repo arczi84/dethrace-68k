@@ -39,15 +39,11 @@ option(DETHRACE_WERROR "Treat warnings as errors")
 option(DETHRACE_FIX_BUGS "Fix Dethrace bugs" ON)
 
 function(add_compile_flag_if_supported TARGET FLAG)
-    cmake_parse_arguments(ARGS "" "" "LANGUAGES" ${ARGN})
-    if(NOT ARGS_LANGUAGES)
-        set(ARGS_LANGUAGES C CXX)
-    endif()
     string(MAKE_C_IDENTIFIER "${FLAG}" FLAG_TO_IDENTIFIER)
     set(HAVE_FLAG_VARIABLE_NAME "HAVE_${FLAG_TO_IDENTIFIER}")
     check_c_compiler_flag("${FLAG}" "${HAVE_FLAG_VARIABLE_NAME}")
     if(${HAVE_FLAG_VARIABLE_NAME})
-        target_compile_options("${TARGET}" PRIVATE "$<$<COMPILE_LANGUAGE:${ARGS_LANGUAGES}>:${FLAG}>")
+        target_compile_options("${TARGET}" PRIVATE "${FLAG}")
     endif()
 endfunction()
 
@@ -58,7 +54,6 @@ function(add_compile_flags_if_supported TARGET)
 endfunction()
 
 test_big_endian(IS_BIGENDIAN)
-
 
 add_subdirectory(lib/BRender-v1.3.2)
 add_subdirectory(lib/libsmacker)

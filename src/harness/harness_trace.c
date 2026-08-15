@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 
-int harness_debug_level = 4;
+int harness_debug_level = 0;
 
 void debug_printf(const char* fmt, const char* fn, const char* fmt2, ...) {
     va_list ap;
@@ -18,8 +18,10 @@ void debug_printf(const char* fmt, const char* fn, const char* fmt2, ...) {
 
     puts("\033[0m");
 }
-
 void panic_printf(const char* fmt, const char* fn, const char* fmt2, ...) {
+    printf(fmt, fn);
+}
+void panic_printf1(const char* fmt, const char* fn, const char* fmt2, ...) {
     va_list ap;
 
     FILE* fp = fopen("dethrace.log", "w");
