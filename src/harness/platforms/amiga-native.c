@@ -480,6 +480,10 @@ static UBYTE *screen_buffers[2] = {NULL, NULL};
 static int current_buffer = 0;
 
 static void present_screen8(br_pixelmap* src) {
+    int copy_width;
+    int copy_height;
+    int y;
+
     if (!rp || !src || !src->pixels) {
         printf("ERROR: `rp` or `src->pixels` is NULL!\n");
         return;
@@ -500,24 +504,18 @@ static void present_screen8(br_pixelmap* src) {
     UBYTE *src_pixels = (UBYTE *)src->pixels;
     UBYTE *temp_buffer = screen_buffers[current_buffer];
 
-    int changes_detected = 0;
-    for (int y = 0; y < screen_height; y++) {
-        for (int x = 0; x < screen_width; x++) {
-            int src_index = y * src->width + x;
-            int dst_index = y * BytesPerRow + x;
-
-            if (x < src->width && y < src->height) {
-                //UBYTE new_pixel = src_pixels[src_index];  /* Direct index for 8-bit mode */
-                UBYTE new_pixel = converted_palette[src_pixels[src_index]];
-                if (temp_buffer[dst_index] != new_pixel) {
-                    temp_buffer[dst_index] = new_pixel;
-                    changes_detected = 1;
-                }
-            }
-        }
+    /* set_palette8() installs an identity palette: a source byte is already
+     * the exact LUT8 value required by CyberGraphX and by the AGA C2P path.
+     * The old loop performed a 32-bit palette lookup plus a comparison for
+     * every pixel, even though a moving race frame changes almost everywhere.
+     * Copy complete rows and present unconditionally instead. */
+    copy_width = src->width < screen_width ? src->width : screen_width;
+    copy_height = src->height < screen_height ? src->height : screen_height;
+    for (y = 0; y < copy_height; y++) {
+        memcpy(temp_buffer + y * BytesPerRow,
+            src_pixels + y * src->row_bytes, copy_width);
     }
 
-    if (changes_detected) {
 if (!is_aga_mode) {
         WritePixelArray(
             (UBYTE*)temp_buffer,
@@ -555,7 +553,6 @@ if (!is_aga_mode) {
         &aga_bm
         );
         }
-    }
 
     current_buffer = 1 - current_buffer;
     //last_screen_src = src;
