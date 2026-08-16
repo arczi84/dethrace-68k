@@ -8,15 +8,9 @@
 int harness_debug_level = 4;
 
 void debug_printf(const char* fmt, const char* fn, const char* fmt2, ...) {
-    va_list ap;
-
-    printf(fmt, fn);
-
-    va_start(ap, fmt2);
-    vprintf(fmt2, ap);
-    va_end(ap);
-
-    puts("\033[0m");
+    (void)fmt;
+    (void)fn;
+    (void)fmt2;
 }
 
 void panic_printf(const char* fmt, const char* fn, const char* fmt2, ...) {

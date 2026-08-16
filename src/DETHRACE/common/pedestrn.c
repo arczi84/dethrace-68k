@@ -1,4 +1,22 @@
 #include "pedestrn.h"
+
+#ifdef AMIGA
+#include <stdio.h>
+/* Count pedestrians reached with no actor.  If this stays at 0 the guards are
+ * dead weight and the crash is elsewhere; if it fires, the actors really are
+ * missing and we know where to look. */
+static int fxa_null_ped_count;
+#define FXA_NULL_PED() \
+    do { \
+        if (fxa_null_ped_count < 20) { \
+            fxa_null_ped_count++; \
+            printf("Amiga 3dfx: NULL ped actor (#%d)\n", fxa_null_ped_count); \
+            fflush(stdout); \
+        } \
+    } while (0)
+#else
+#define FXA_NULL_PED() ((void)0)
+#endif
 #include "brender.h"
 #include "car.h"
 #include "constants.h"

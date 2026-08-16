@@ -18,12 +18,18 @@ void BR_CALLBACK _BrBeginHook(void) {
     struct br_device* BR_EXPORT BrDrv1SoftRendBegin(char* arguments);
     struct br_device* BR_EXPORT BrDrv1VirtualFramebufferBegin(char* arguments);
     struct br_device* BR_EXPORT BrDrv1GLBegin(char* arguments);
+#ifdef AMIGA
+    struct br_device* BR_EXPORT BrDrv13DFXAmigaBegin(char* arguments);
+#endif
 
 #if _MSC_VER != 1020
     BrDevAddStatic(NULL, BrDrv1SoftPrimBegin, NULL);
     BrDevAddStatic(NULL, BrDrv1SoftRendBegin, NULL);
     BrDevAddStatic(NULL, BrDrv1VirtualFramebufferBegin, NULL);
     BrDevAddStatic(NULL, BrDrv1GLBegin, NULL);
+#ifdef AMIGA
+    BrDevAddStatic(NULL, BrDrv13DFXAmigaBegin, NULL);
+#endif
 #endif
 }
 

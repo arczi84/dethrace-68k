@@ -296,6 +296,8 @@ int Harness_Init(int* argc, char* argv[]) {
     harness_game_config.demo_timeout = 240000;
     // disable developer diagnostics by default
     harness_game_config.enable_diagnostics = 0;
+    // no savegame auto-load: start at the logos/main menu as usual
+    harness_game_config.load_slot = -1;
     // no volume multiplier
     harness_game_config.volume_multiplier = 1.0f;
     // start window in windowed mode
@@ -410,6 +412,11 @@ int Harness_ProcessCommandLine(int* argc, char* argv[]) {
         } else if (strcasecmp(argv[i], "--no-signal-handler") == 0) {
             LOG_INFO("Don't install the signal handler");
             harness_game_config.install_signalhandler = 0;
+            consumed = 1;
+        } else if (strstr(argv[i], "--load=") != NULL) {
+            char* s = strstr(argv[i], "=");
+            harness_game_config.load_slot = atoi(s + 1);
+            LOG_INFO2("Loading savegame slot %d, skipping the main menu", harness_game_config.load_slot);
             consumed = 1;
         } else if (strstr(argv[i], "--demo-timeout=") != NULL) {
             char* s = strstr(argv[i], "=");

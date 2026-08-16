@@ -49,6 +49,9 @@ typedef struct tHarness_game_config {
     int freeze_timer;
     unsigned demo_timeout;
     int enable_diagnostics;
+    /* --load=N: jump straight into savegame slot N, skipping logos and the
+     * main menu.  -1 (the default) keeps the normal startup flow. */
+    int load_slot;
     float volume_multiplier;
     int start_full_screen;
     int gore_check;

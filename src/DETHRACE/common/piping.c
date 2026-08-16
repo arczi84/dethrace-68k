@@ -481,10 +481,26 @@ void AddDataToSession(int pSubject_index, void* pData, tU32 pData_length) {
         if (temp_buffer_size < LOCAL_BUFFER_SIZE) {
             REPLAY_DEBUG_ASSERT(((tPipe_session*)gLocal_buffer)->pipe_magic1 == REPLAY_DEBUG_SESSION_MAGIC1);
             ((tPipe_session*)gLocal_buffer)->number_of_chunks++;
+#if defined(DETHRACE_FIX_BUGS)
+            /* The m68k ABI aligns this union to two bytes, so chunk_data is at
+             * offset 2 while sizeof(tPipe_chunk*) is 4.  Advancing by pointer
+             * size made the write cursor diverge from gLocal_buffer_size by
+             * two bytes per chunk and eventually corrupted the replay ring. */
+            {
+                tChunk_subject_index subject_index = pSubject_index;
+                memcpy((tU8*)gMr_chunky2 + offsetof(tPipe_chunk, subject_index),
+                    &subject_index, sizeof(subject_index));
+            }
+#else
             gMr_chunky2->subject_index = pSubject_index;
-            gMr_chunky2 = (tPipe_chunk*)((tU8*)gMr_chunky2 + sizeof(tPipe_chunk*));
+#endif
 #if defined(DETHRACE_REPLAY_DEBUG)
             gMr_chunky2->chunk_magic1 = REPLAY_DEBUG_CHUNK_MAGIC1;
+#endif
+#if defined(DETHRACE_FIX_BUGS)
+            gMr_chunky2 = (tPipe_chunk*)((tU8*)gMr_chunky2 + offsetof(tPipe_chunk, chunk_data));
+#else
+            gMr_chunky2 = (tPipe_chunk*)&gMr_chunky2->chunk_data;
 #endif
             memcpy(gMr_chunky2, pData, pData_length);
             gMr_chunky2 = (tPipe_chunk*)((tU8*)gMr_chunky2 + pData_length);

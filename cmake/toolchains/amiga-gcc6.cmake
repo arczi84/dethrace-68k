@@ -35,16 +35,23 @@ set(CMAKE_CPP_COMPILER "${M68K_TOOLCHAIN_PATH}/bin/m68k-amigaos-cpp")
 set(CMAKE_ASM_COMPILER "${M68K_TOOLCHAIN_PATH}/bin/m68k-amigaos-as")
 set(CMAKE_PREFIX_PATH "${M68K_TOOLCHAIN_PATH}")
 
-set(AMIGA_PROFILE_FLAGS "-s -fomit-frame-pointer")
+option(AMIGA_ENABLE_GPROF "Build with gprof instrumentation" OFF)
+if(AMIGA_ENABLE_GPROF)
+    set(AMIGA_PROFILE_FLAGS "-pg")
+    set(AMIGA_FINAL_STRIP_FLAG "")
+else()
+    set(AMIGA_PROFILE_FLAGS "-s -fomit-frame-pointer")
+    set(AMIGA_FINAL_STRIP_FLAG "-s")
+endif()
 set(AMIGA_COMMON_FLAGS
-    "-m${M68K_CPU} -m${M68K_FPU}-float -Ofast -fbbb=+ -funroll-loops -DBR_ENDIAN_BIG=1 -DBUILD=RELEASE -w -std=gnu11 -ffast-math -noixemul ${AMIGA_PROFILE_FLAGS} -I${AMIGA_SUPPORT_PATH}/include -I${CMAKE_SOURCE_DIR}/src/DETHRACE/common -I${CMAKE_SOURCE_DIR}/src/DETHRACE -I${CMAKE_SOURCE_DIR}/src/S3/include")
+    "-m${M68K_CPU} -m${M68K_FPU}-float -O1 -fbbb=- -fno-strict-aliasing -fno-unroll-loops -DBR_ENDIAN_BIG=1 -DBUILD=RELEASE -w -std=gnu11 -noixemul ${AMIGA_PROFILE_FLAGS} -I${AMIGA_SUPPORT_PATH}/include -I${CMAKE_SOURCE_DIR}/src/DETHRACE/common -I${CMAKE_SOURCE_DIR}/src/DETHRACE -I${CMAKE_SOURCE_DIR}/src/S3/include")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${AMIGA_COMMON_FLAGS}")
 set(CMAKE_CXX_FLAGS
     "${CMAKE_CXX_FLAGS} ${AMIGA_COMMON_FLAGS} -D__stdargs= -std=c++11")
 
 set(CMAKE_EXE_LINKER_FLAGS
-    "${CMAKE_EXE_LINKER_FLAGS} ${AMIGA_PROFILE_FLAGS} -L${AMIGA_SUPPORT_PATH}/lib ${AMIGA_SUPPORT_PATH}/lib/c2p1x1_4_c5_bm.o ${AMIGA_SUPPORT_PATH}/lib/c2p1x1_8_c5_bm_040.o ${AMIGA_SUPPORT_PATH}/lib/c2p1x1_6_c5_bm_040.o -lm -noixemul -s")
+    "${CMAKE_EXE_LINKER_FLAGS} ${AMIGA_PROFILE_FLAGS} -L${AMIGA_SUPPORT_PATH}/lib ${AMIGA_SUPPORT_PATH}/lib/c2p1x1_4_c5_bm.o ${AMIGA_SUPPORT_PATH}/lib/c2p1x1_8_c5_bm_040.o ${AMIGA_SUPPORT_PATH}/lib/c2p1x1_6_c5_bm_040.o -lm -noixemul ${AMIGA_FINAL_STRIP_FLAG}")
 set(CMAKE_EXE_LINKER_FLAGS_DEBUG
     "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -lm -DDEBUG -ldebug")
 set(CMAKE_CXX_FLAGS_DEBUG "-DDEBUG")

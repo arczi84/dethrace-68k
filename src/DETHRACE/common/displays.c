@@ -305,9 +305,17 @@ void DeviouslyDimRectangle(br_pixelmap* pPixelmap, int pLeft, int pTop, int pRig
     gDim_model->vertices[1].p.v[1] = -pBottom;
     BrModelUpdate(gDim_model, BR_MODU_VERTEX_POSITIONS);
     gDim_actor->render_style = BR_RSTYLE_FACES;
+#ifdef AMIGA
+    PDSuspendRealBackScreen();
+#else
     PDUnlockRealBackScreen(1);
+#endif
     BrZbSceneRender(g2d_camera, g2d_camera, gBack_screen, gDepth_buffer);
+#ifdef AMIGA
+    PDResumeRealBackScreen();
+#else
     PDLockRealBackScreen(1);
+#endif
     gDim_actor->render_style = BR_RSTYLE_NONE;
 }
 #endif

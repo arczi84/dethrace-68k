@@ -698,6 +698,14 @@ void InitialiseProgramState(void) {
 // FUNCTION: CARM95 0x00414d8a
 void DoProgram(void) {
     InitialiseProgramState();
+    /* --load=N: skip the logos and the main menu by going straight to the
+     * savegame loader.  eProg_idling already prefers DoLoadGame() whenever
+     * gGame_to_load is set, so this just seeds it (InitialiseProgramState()
+     * resets it to -1, hence setting it here rather than at argument time). */
+    if (harness_game_config.load_slot >= 0) {
+        gGame_to_load = harness_game_config.load_slot;
+        gProgram_state.prog_status = eProg_idling;
+    }
     do {
         switch (gProgram_state.prog_status) {
         case eProg_intro:

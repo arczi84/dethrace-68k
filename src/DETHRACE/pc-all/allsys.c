@@ -67,6 +67,11 @@ br_pixelmap* gTemp_screen;
 
 int gReal_back_screen_locked;
 
+#ifdef AMIGA
+extern void FXA_SuspendPixelmapDirectLock(br_pixelmap* pixelmap);
+extern void FXA_ResumePixelmapDirectLock(br_pixelmap* pixelmap);
+#endif
+
 tU8 gScan_code[123][2];
 
 // Added from VOODOO2C executable
@@ -393,6 +398,20 @@ void PDUnlockRealBackScreen(int lock) {
     }
 }
 
+#ifdef AMIGA
+void PDSuspendRealBackScreen(void) {
+    if (gReal_back_screen_locked && gReal_back_screen->pixels) {
+        FXA_SuspendPixelmapDirectLock(gReal_back_screen);
+    }
+}
+
+void PDResumeRealBackScreen(void) {
+    if (gReal_back_screen_locked && !gReal_back_screen->pixels) {
+        FXA_ResumePixelmapDirectLock(gReal_back_screen);
+    }
+}
+#endif
+
 // IDA: void __cdecl PDAllocateScreenAndBack()
 // FUNCTION: CARM95 0x004a728d
 void PDAllocateScreenAndBack(void) {
@@ -406,12 +425,20 @@ void PDAllocateScreenAndBack(void) {
             gl_callbacks.get_viewport = gHarness_platform.GetViewport;
             gHarness_platform.CreateWindow_("Carmageddon", gGraf_specs[gGraf_spec_index].phys_width, gGraf_specs[gGraf_spec_index].phys_height, eWindow_type_opengl);
 
+#ifdef AMIGA
+            br_error amiga_3dfx_error = BrDevBeginVar(&gScreen, "3dfx_amiga",
+                BRT_WIDTH_I32, gGraf_specs[gGraf_spec_index].phys_width,
+                BRT_HEIGHT_I32, gGraf_specs[gGraf_spec_index].phys_height,
+                BR_NULL_TOKEN);
+            (void)amiga_3dfx_error;
+#else
             BrDevBeginVar(&gScreen, "glrend",
                 BRT_WIDTH_I32, gGraf_specs[gGraf_spec_index].phys_width,
                 BRT_HEIGHT_I32, gGraf_specs[gGraf_spec_index].phys_height,
                 BRT_OPENGL_CALLBACKS_P, &gl_callbacks,
                 BRT_PIXEL_TYPE_U8, BR_PMT_RGB_565,
                 BR_NULL_TOKEN);
+#endif
         }
     }
 

@@ -23,6 +23,14 @@
 
 #include <ctype.h>
 #include <float.h>
+
+#ifdef AMIGA
+/* Implemented by the Amiga Glide shim (3dfx_amiga/glide_shim.c).  Declared here
+ * rather than including glide.h, which would pull the whole Glide API into the
+ * game sources. */
+extern void FXA_ClearHudPixelAt(void* pixel);
+extern void FXA_MarkHudPixelAt(void* pixel);
+#endif
 #include <stdio.h>
 #include <string.h>
 
@@ -1075,7 +1083,59 @@ tU16 PaletteEntry16Bit(br_pixelmap* pPal, int pEntry) {
 br_pixelmap* PaletteOf16Bits(br_pixelmap* pSrc) {
     tU16* dst_entry;
     int value;
+#ifdef AMIGA
+    /* Two 16-bit palettes, keyed on the source palette.
+     *
+     * The HUD panel blit passes gCurrent_palette or gFlic_palette depending on
+     * gCurrent_conversion_table, while the font blit always passes
+     * gCurrent_palette.  With a single cached palette, whichever source arrived
+     * last won, and every blit using the other one came out with the wrong
+     * colours -- the HUD background rendered green whenever it was converted
+     * through the FLI palette.  Which one won depended on call order, so the
+     * fault appeared on some runs of the same race and not others. */
+    static br_pixelmap* cached_pm[2];
+    static br_pixelmap* cached_src[2];
+    static int cached_valid[2];
+    int slot;
 
+    if (!g16bit_palette_valid) {
+        /* Global invalidation (palette change): drop both entries. */
+        cached_valid[0] = cached_valid[1] = 0;
+    }
+
+    /* Pick the slot already holding this source, else a free one, else slot 1
+     * (slot 0 is kept for whichever palette claimed it first). */
+    if (cached_src[0] == pSrc) {
+        slot = 0;
+    } else if (cached_src[1] == pSrc) {
+        slot = 1;
+    } else if (cached_src[0] == NULL) {
+        slot = 0;
+    } else {
+        slot = 1;
+    }
+
+    if (cached_pm[slot] == NULL) {
+        cached_pm[slot] = BrPixelmapAllocate(BR_PMT_RGB_565, 1, 256, NULL, 0);
+        if (cached_pm[slot] == NULL) {
+            FatalError(kFatalError_OOMCarmageddon_S, "16-bit palette");
+        }
+    }
+    if (!cached_valid[slot] || cached_src[slot] != pSrc) {
+        dst_entry = cached_pm[slot]->pixels;
+        for (value = 0; value < 256; value++) {
+            *dst_entry = PaletteEntry16Bit(pSrc, value);
+            dst_entry++;
+        }
+        cached_src[slot] = pSrc;
+        cached_valid[slot] = 1;
+    }
+    /* Keep the shared globals consistent for any other user. */
+    g16bit_palette = cached_pm[slot];
+    gSource_for_16bit_palette = pSrc;
+    g16bit_palette_valid = 1;
+    return cached_pm[slot];
+#else
     if (g16bit_palette == NULL) {
         g16bit_palette = BrPixelmapAllocate(BR_PMT_RGB_565, 1, 256, g16bit_palette, 0);
         if (g16bit_palette == NULL) {
@@ -1093,6 +1153,7 @@ br_pixelmap* PaletteOf16Bits(br_pixelmap* pSrc) {
         g16bit_palette_valid = 1;
     }
     return g16bit_palette;
+#endif
 }
 
 // IDA: void __usercall Copy8BitTo16Bit(br_pixelmap *pDst@<EAX>, br_pixelmap *pSrc@<EDX>, br_pixelmap *pPalette@<EBX>)
@@ -1226,6 +1287,14 @@ void Copy8BitTo16BitRectangleWithTransparency(br_pixelmap* pDst, tS16 pDst_x, tS
         for (x = 0; x < pWidth; x++) {
             if (*src_start != 0) {
                 *dst_start = palette_entry[*src_start];
+#ifdef AMIGA
+                /* Claim the pixel for this frame straight away.  The overlay
+                 * mask is only updated at grLfbEnd(), i.e. after the whole
+                 * blit, so without marking it here an overlapping later blit
+                 * (the speedometer digits over its dial) would see an unmarked
+                 * pixel and punch a hole through what this blit just drew. */
+                FXA_MarkHudPixelAt(dst_start);
+#endif
             }
             src_start++;
             dst_start++;
@@ -1249,6 +1318,14 @@ void Copy8BitToOnscreen16BitRectangleWithTransparency(br_pixelmap* pDst, tS16 pD
         for (x = 0; x < pWidth; x++) {
             if (*src_start != 0) {
                 *dst_start = palette_entry[*src_start];
+#ifdef AMIGA
+                /* Claim the pixel for this frame straight away.  The overlay
+                 * mask is only updated at grLfbEnd(), i.e. after the whole
+                 * blit, so without marking it here an overlapping later blit
+                 * (the speedometer digits over its dial) would see an unmarked
+                 * pixel and punch a hole through what this blit just drew. */
+                FXA_MarkHudPixelAt(dst_start);
+#endif
             }
             src_start++;
             dst_start++;

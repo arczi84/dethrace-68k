@@ -11,6 +11,7 @@
 #include <proto/graphics.h>
 #include <proto/cybergraphics.h>
 #include <inline/timer.h>
+#include <mgl/gl.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -42,12 +43,14 @@ extern void QuitGame(void);
 static void (*gKeyHandler_func)(void);
 static void (*gPalette_impl)(PALETTEENTRY_* palette);
 static void handle_amiga_mouse_event(struct Window* win);
+static void destroy_window(void);
 
 extern void c2p1x1_8_c5_bm_040(int chunkyx __asm("d0"), int chunkyy __asm("d1"), int offsx __asm("d2"), int offsy __asm("d3"), void* c2pscreen __asm("a0"), struct BitMap* bitmap __asm("a1"));
 extern void c2p1x1_6_c5_bm_040(int chunkyx __asm("d0"), int chunkyy __asm("d1"), int offsx __asm("d2"), int offsy __asm("d3"), void* c2pscreen __asm("a0"), struct BitMap* bitmap __asm("a1"));
 extern void c2p1x1_4_c5_bm(int chunkyx __asm("d0"), int chunkyy __asm("d1"), int offsx __asm("d2"), int offsy __asm("d3"), void* c2pscreen __asm("a0"), struct BitMap* bitmap __asm("a1"));
 
-struct Library *CyberGfxBase = NULL;
+/* MiniGL owns this process-global library base. */
+extern struct Library *CyberGfxBase;
 static struct timeval basetime;
 struct Library *TimerBase;
 
@@ -80,6 +83,7 @@ static ULONG last_frame_time = 0;
 static UBYTE *ham_buffer = NULL;
 static bool is_ham_mode = 0;
 static bool is_aga_mode = 0;
+static bool is_opengl_mode = 0;
 extern int gGraf_spec_index;
 
 static UWORD current_r = 0, current_g = 0, current_b = 0;
@@ -112,10 +116,6 @@ int reqmodeid(void) {
                     ASLSM_PropertyFlags, 0,
                     ASLSM_PropertyMask, DIPF_IS_DUALPF | DIPF_IS_PF2PRI,
                     TAG_DONE)) {
-                printf("Width: %ld\n", sm->sm_DisplayWidth);
-                printf("Height: %ld\n", sm->sm_DisplayHeight);
-                printf("Depth: %d\n", sm->sm_DisplayDepth);
-                printf("ModeID: 0x%08x\n", sm->sm_DisplayID);
             }
             modeid = sm->sm_DisplayID;
             render_width = sm->sm_DisplayWidth;
@@ -233,6 +233,13 @@ static void get_and_handle_message(void) {
                 if (dinput_key == -1) {
                     break;
                 }
+                /* Emergency exit for a broken fullscreen renderer.  Use the
+                 * normal game shutdown so AHI/CD audio and MiniGL are closed. */
+                if (!(code & IECODE_UP_PREFIX) && dinput_key == DIK_F10) {
+                    printf("Emergency exit (F10)\n");
+                    fflush(NULL);
+                    QuitGame();
+                }
                 if (dinput_key == DIK_PLAYPAUSE) {
                     dinput_key = DIK_S;//msg->message = WM_PLAYPAUSE;
                 } else if (dinput_key == DIK_MEDIASTOP) {
@@ -295,17 +302,14 @@ static void* create_window_and_renderer_pal(char* title, int x, int y, int width
 
     /* Open HAM6 screen with optimal mode ID */
     if (is_ham_mode) {
-        printf("Creating HAM6 window and renderer\n");
         modeID = LORES_KEY | HAM_KEY;
     }
     else {
-        printf("Creating AGA window and renderer\n");
         //modeID = LORES_KEY ;//| HIRESLACE_KEY;
         modeID = 0x00011000; // PAL AGA LORES
         width = 320;
         height = 256;
         if (gGraf_spec_index) {
-            printf("Using high-res mode\n");
             //modeID = HIRES_KEY;
             modeID = 0x00019004;
             // modeID = 0x00029004;  //AGA 640x480x8
@@ -337,8 +341,6 @@ static void* create_window_and_renderer_pal(char* title, int x, int y, int width
         exit(1);
     }
 
-    printf("PAL Screen opened: width=%d, height=%d, depth=%d\n",
-           amiga_screen->Width, amiga_screen->Height, amiga_screen->RastPort.BitMap->Depth);
 
     BytesPerRow = amiga_screen->RastPort.BitMap->BytesPerRow;
 
@@ -391,22 +393,18 @@ static void* create_window_and_renderer(char* title, int x, int y, int width, in
             exit(1);
         }
     }
-    printf("Requested depth: %d\n", depth);
 
     /* Open HAM6 screen with optimal mode ID */
     if (is_ham_mode) {
-        printf("Creating HAM6 window and renderer\n");
         modeID = LORES_KEY | HAM_KEY;
 
     }
     else if (is_aga_mode) {
-        printf("Creating AGA window and renderer\n");
         //modeID = LORES_KEY ;//| HIRESLACE_KEY;
         modeID = 0x00011000; // PAL AGA LORES
         width = 320;
         height = 200;//56;
         if (gGraf_spec_index) {
-            printf("Using high-res mode\n");
             //modeID = HIRES_KEY;
             modeID = 0x00029004;
             width = 640;
@@ -447,8 +445,6 @@ static void* create_window_and_renderer(char* title, int x, int y, int width, in
 
     BytesPerRow = ((amiga_screen->Width + 15) & ~15);
 
-    printf(" Screen opened: width=%d, height=%d, depth=%4ld\n",
-           amiga_screen->Width, amiga_screen->Height, GetBitMapAttr(amiga_screen->RastPort.BitMap,BMA_DEPTH));
 
     amiga_window = OpenWindowTags(NULL,
         WA_CustomScreen, amiga_screen,
@@ -987,8 +983,6 @@ USHORT converted_palette_16[256];
 static void set_palette16(PALETTEENTRY_* pal) {
     if (!amiga_screen) return; // Sprawdzenie bezpieczeństwa
 
-    printf("DEBUG: Setting 16-bit and 32-bit palettes\n");
-
     for (int i = 0; i < 256; i++) {
         // 1. Ustawienie tablicy 32-bit (tak jak w set_palette32)
         //    Format ARGB 8-8-8-8
@@ -1193,12 +1187,22 @@ static int get_mouse_position(int* pX, int* pY) {
 }
 
 static void destroy_window(void) {
+    bool was_opengl_mode = is_opengl_mode;
+
     if (ham_buffer) {
         FreeVec(ham_buffer);
         ham_buffer = NULL;
     }
 
-    if (amiga_window) {
+    if (is_opengl_mode && mini_CurrentContext) {
+        mglDeleteContext();
+        mini_CurrentContext = NULL;
+        is_opengl_mode = 0;
+        amiga_window = NULL;
+        amiga_screen = NULL;
+        rp = NULL;
+        cm = NULL;
+    } else if (amiga_window) {
         ClearPointer(amiga_window);
         CloseWindow(amiga_window);
         amiga_window = NULL;
@@ -1213,7 +1217,7 @@ static void destroy_window(void) {
         FreeVec(screen_buffers[0]);
     if (screen_buffers[1])
         FreeVec(screen_buffers[1]);
-    if (CyberGfxBase)
+    if (CyberGfxBase && !was_opengl_mode)
         CloseLibrary(CyberGfxBase);
     if (TimerBase)
         CloseLibrary(TimerBase);
@@ -1225,7 +1229,39 @@ static void set_key_handler(void (*handler_func)(void)) {
 }
 
 static void create_window(const char* title, int width, int height, tHarness_window_type window_type) {
-    if (is_ham_mode) {
+    if (window_type == eWindow_type_opengl) {
+        (void)title;
+        mglChooseWindowMode(harness_game_config.start_full_screen ? GL_FALSE : GL_TRUE);
+        mglChooseNumberOfBuffers(2);
+        mglChoosePixelDepth(16);
+        mglChooseVertexBufferSize(4096);
+        if (!mglCreateContext(0, 0, width, height)) {
+            printf("ERROR: unable to create MiniGL context\n");
+            exit(1);
+        }
+        /* Do not quantize the game to fractions of the host refresh rate.
+         * This renderer is benchmarked independently from display VSync. */
+        mglEnableSync(GL_FALSE);
+        is_opengl_mode = 1;
+        render_width = width;
+        render_height = height;
+        amiga_window = (struct Window*)mglGetWindowHandle();
+        if (!amiga_window) {
+            printf("ERROR: MiniGL did not return an Intuition window\n");
+            exit(1);
+        }
+        amiga_screen = amiga_window->WScreen;
+        rp = amiga_window->RPort;
+        cm = amiga_screen ? amiga_screen->ViewPort.ColorMap : NULL;
+        if (harness_game_config.start_full_screen && amiga_screen) {
+            ScreenToFront(amiga_screen);
+            WindowToFront(amiga_window);
+            ActivateWindow(amiga_window);
+        }
+        ModifyIDCMP(amiga_window, IDCMP_MOUSEBUTTONS | IDCMP_RAWKEY |
+            IDCMP_MOUSEMOVE | IDCMP_CLOSEWINDOW);
+        initializeAmigaRawKeyNums();
+    } else if (is_ham_mode) {
         create_window_and_renderer_pal((char*)title, 0, 0, width, height);
     } else {
         create_window_and_renderer((char*)title, 0, 0, width, height);
@@ -1235,7 +1271,8 @@ static void create_window(const char* title, int width, int height, tHarness_win
 
 static void swap_buffers(br_pixelmap* back_buffer) {
     get_and_handle_message();
-    gHarness_platform.Renderer_Present(back_buffer);
+    if (!is_opengl_mode)
+        gHarness_platform.Renderer_Present(back_buffer);
 }
 
 static void palette_changed(br_colour entries[256]) {
@@ -1277,7 +1314,6 @@ static int Amiga_Harness_Platform_Init(tHarness_platform* platform) {
         printf("WARNING: 16-bit palette not supported, using 8-bit.\n");
         depth = 8;
     }
-    printf("Harness depth: %d\n", depth);
     if (depth == HAM6_DEPTH) {
         is_ham_mode = 1;
         gPalette_impl = set_palette_ham6;
@@ -1315,6 +1351,6 @@ static int Amiga_Harness_Platform_Init(tHarness_platform* platform) {
 const tPlatform_bootstrap Amiga_bootstrap = {
     "amiga",
     "Native AmigaOS AGA, HAM6 and CyberGraphX video backend",
-    ePlatform_cap_software,
+    ePlatform_cap_software | ePlatform_cap_opengl,
     Amiga_Harness_Platform_Init,
 };

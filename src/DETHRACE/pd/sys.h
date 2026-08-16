@@ -89,6 +89,12 @@ void PDLockRealBackScreen(int lock);
 
 void PDUnlockRealBackScreen(int lock);
 
+#ifdef AMIGA
+void PDSuspendRealBackScreen(void);
+
+void PDResumeRealBackScreen(void);
+#endif
+
 void PDAllocateScreenAndBack(void);
 
 // void Copy8BitTo16BitPixelmap(br_pixelmap* pDst, br_pixelmap* pSrc, br_pixelmap* pPalette);
