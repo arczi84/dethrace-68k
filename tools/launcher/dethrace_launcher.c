@@ -23,7 +23,7 @@
 
 #define CFG_FILE "dethrace-launcher.cfg"
 #define WIN_W 620
-#define WIN_H 334
+#define WIN_H 368
 #define LEFT_X 12
 #define RIGHT_X 315
 #define LABEL_W 142
@@ -46,6 +46,8 @@ enum {
     GID_SKIP_CUTSCENES,
     GID_REPLAY,
     GID_LOWMEM,
+    GID_CD_DEVICE,
+    GID_CD_UNIT,
     GID_SAVE,
     GID_PLAY,
     GID_QUIT,
@@ -67,6 +69,8 @@ typedef struct LauncherConfig {
     int lowmem;
     int car_detail;
     int sound_detail;
+    char cd_device[64];
+    int cd_unit;
 } LauncherConfig;
 
 typedef struct Lang {
@@ -85,6 +89,8 @@ typedef struct Lang {
     const char *skip_cutscenes;
     const char *replay;
     const char *lowmem;
+    const char *cd_device;
+    const char *cd_unit;
     const char *save;
     const char *play;
     const char *quit;
@@ -98,6 +104,7 @@ static const Lang lang_pl = {
     "Detale aut:", "Detale dzwieku:",
     "W oknie:", "Dzwiek:", "Menu opcji dzwieku:",
     "Pomin filmy:", "Action Replay:", "Tryb malej pamieci:",
+    "Urzadzenie CD:", "Unit CD:",
     "Zapisz", "Graj!", "Wyjscie", "Dethrace - zapisano"
 };
 
@@ -108,6 +115,7 @@ static const Lang lang_en = {
     "Car detail:", "Sound detail:",
     "Windowed:", "Sound:", "Sound options menu:",
     "Skip cutscenes:", "Action Replay:", "Low-memory mode:",
+    "CD device:", "CD unit:",
     "Save", "Play!", "Quit", "Dethrace - saved"
 };
 
@@ -158,7 +166,9 @@ static LauncherConfig cfg = {
     1, /* replay */
     0, /* normal memory */
     0, /* highest car detail */
-    2  /* highest sound detail */
+    2, /* highest sound detail */
+    "scsi.device",
+    0
 };
 
 struct Library *IntuitionBase = NULL;
@@ -197,11 +207,18 @@ static void load_config(void)
     FILE *f = fopen(CFG_FILE, "r");
     char line[128];
     char key[64];
+    char text_value[64];
     int value;
 
     if (!f) return;
     while (fgets(line, sizeof(line), f)) {
-        if (sscanf(line, " %63[^=]=%d", key, &value) != 2) continue;
+        if (sscanf(line, " %63[^=]=%63[^\r\n]", key, text_value) != 2) continue;
+        if (strcasecmp(key, "cd_device") == 0) {
+            strncpy(cfg.cd_device, text_value, sizeof(cfg.cd_device) - 1);
+            cfg.cd_device[sizeof(cfg.cd_device) - 1] = '\0';
+            continue;
+        }
+        value = atoi(text_value);
         if (strcasecmp(key, "game") == 0) cfg.game = value;
         else if (strcasecmp(key, "renderer") == 0) cfg.renderer = value;
         else if (strcasecmp(key, "resolution") == 0) cfg.resolution = value;
@@ -216,6 +233,7 @@ static void load_config(void)
         else if (strcasecmp(key, "lowmem") == 0) cfg.lowmem = value;
         else if (strcasecmp(key, "car_detail") == 0) cfg.car_detail = value;
         else if (strcasecmp(key, "sound_detail") == 0) cfg.sound_detail = value;
+        else if (strcasecmp(key, "cd_unit") == 0) cfg.cd_unit = value;
     }
     fclose(f);
 
@@ -233,6 +251,8 @@ static void load_config(void)
     cfg.lowmem = !!cfg.lowmem;
     cfg.car_detail = clamp_int(cfg.car_detail, 0, 4);
     cfg.sound_detail = clamp_int(cfg.sound_detail, 0, 2);
+    if (cfg.cd_device[0] == '\0') strcpy(cfg.cd_device, "scsi.device");
+    cfg.cd_unit = clamp_int(cfg.cd_unit, 0, 255);
 }
 
 static int save_config(void)
@@ -253,6 +273,8 @@ static int save_config(void)
     fprintf(f, "lowmem=%d\n", cfg.lowmem);
     fprintf(f, "car_detail=%d\n", cfg.car_detail);
     fprintf(f, "sound_detail=%d\n", cfg.sound_detail);
+    fprintf(f, "cd_device=%s\n", cfg.cd_device);
+    fprintf(f, "cd_unit=%d\n", cfg.cd_unit);
     fclose(f);
     return 1;
 }
@@ -310,6 +332,44 @@ static struct Gadget *make_button(struct Gadget *prev, int gid, int x, int y,
     return CreateGadget(BUTTON_KIND, prev, &ng, TAG_DONE);
 }
 
+static struct Gadget *make_string(struct Gadget *prev, int gid, int x, int y,
+                                  const char *label, char *value, int max_chars)
+{
+    struct NewGadget ng;
+    memset(&ng, 0, sizeof(ng));
+    ng.ng_LeftEdge = x + LABEL_W;
+    ng.ng_TopEdge = y;
+    ng.ng_Width = CONTROL_W;
+    ng.ng_Height = GADGET_H;
+    ng.ng_GadgetText = (STRPTR)label;
+    ng.ng_GadgetID = gid;
+    ng.ng_VisualInfo = vi;
+    ng.ng_Flags = PLACETEXT_LEFT;
+    return CreateGadget(STRING_KIND, prev, &ng,
+                        GTST_String, (ULONG)value,
+                        GTST_MaxChars, max_chars,
+                        TAG_DONE);
+}
+
+static struct Gadget *make_integer(struct Gadget *prev, int gid, int x, int y,
+                                   const char *label, int value)
+{
+    struct NewGadget ng;
+    memset(&ng, 0, sizeof(ng));
+    ng.ng_LeftEdge = x + LABEL_W;
+    ng.ng_TopEdge = y;
+    ng.ng_Width = CONTROL_W;
+    ng.ng_Height = GADGET_H;
+    ng.ng_GadgetText = (STRPTR)label;
+    ng.ng_GadgetID = gid;
+    ng.ng_VisualInfo = vi;
+    ng.ng_Flags = PLACETEXT_LEFT;
+    return CreateGadget(INTEGER_KIND, prev, &ng,
+                        GTIN_Number, value,
+                        GTIN_MaxChars, 3,
+                        TAG_DONE);
+}
+
 static int get_cycle(int gid)
 {
     ULONG active = 0;
@@ -325,23 +385,49 @@ static int get_check(int gid)
     return gadgets[gid] && (gadgets[gid]->Flags & SELECTED) ? 1 : 0;
 }
 
+static const char *get_string(int gid)
+{
+    struct StringInfo *info;
+    if (!gadgets[gid] || !gadgets[gid]->SpecialInfo) return "";
+    info = (struct StringInfo *)gadgets[gid]->SpecialInfo;
+    return (const char *)info->Buffer;
+}
+
+static int get_integer(int gid)
+{
+    return atoi(get_string(gid));
+}
+
 static void update_renderer_controls(void)
 {
+    int game;
     int renderer;
     int display;
     int resolution;
+    int renderer_disabled;
     int resolution_disabled;
 
-    if (!win || !gadgets[GID_RENDERER] || !gadgets[GID_DISPLAY]
+    if (!win || !gadgets[GID_GAME] || !gadgets[GID_RENDERER] || !gadgets[GID_DISPLAY]
         || !gadgets[GID_RESOLUTION]) return;
 
+    game = get_cycle(GID_GAME);
     renderer = get_cycle(GID_RENDERER);
     display = get_cycle(GID_DISPLAY);
-    resolution_disabled = renderer == 1 || display == 2;
     resolution = get_cycle(GID_RESOLUTION);
+    renderer_disabled = game == 2;
 
-    /* MiniGL is always 640x480; HAM6 is always 320x200. */
-    if (renderer == 1) resolution = 1;
+    /* The original Carmageddon demo only contains the software 320x200 data. */
+    if (game == 2) renderer = 0;
+
+    GT_SetGadgetAttrs(gadgets[GID_RENDERER], win, NULL,
+                      GTCY_Active, renderer,
+                      GA_Disabled, renderer_disabled,
+                      TAG_DONE);
+
+    resolution_disabled = game == 2 || renderer == 1 || display == 2;
+    /* Demo and HAM6 are always 320x200; MiniGL is always 640x480. */
+    if (game == 2) resolution = 0;
+    else if (renderer == 1) resolution = 1;
     else if (display == 2) resolution = 0;
 
     GT_SetGadgetAttrs(gadgets[GID_RESOLUTION], win, NULL,
@@ -366,6 +452,10 @@ static void read_gadgets(void)
     cfg.skip_cutscenes = get_check(GID_SKIP_CUTSCENES);
     cfg.replay = get_check(GID_REPLAY);
     cfg.lowmem = get_check(GID_LOWMEM);
+    strncpy(cfg.cd_device, get_string(GID_CD_DEVICE), sizeof(cfg.cd_device) - 1);
+    cfg.cd_device[sizeof(cfg.cd_device) - 1] = '\0';
+    if (cfg.cd_device[0] == '\0') strcpy(cfg.cd_device, "scsi.device");
+    cfg.cd_unit = clamp_int(get_integer(GID_CD_UNIT), 0, 255);
 }
 
 static int create_gui(struct Screen *screen)
@@ -399,7 +489,7 @@ static int create_gui(struct Screen *screen)
         WA_DragBar, TRUE,
         WA_DepthGadget, TRUE,
         WA_IDCMP, IDCMP_CLOSEWINDOW | IDCMP_GADGETUP | IDCMP_GADGETDOWN |
-                  BUTTONIDCMP | CYCLEIDCMP | CHECKBOXIDCMP,
+                  BUTTONIDCMP | CYCLEIDCMP | CHECKBOXIDCMP | STRINGIDCMP | INTEGERIDCMP,
         TAG_DONE);
     if (!win) return 0;
 
@@ -436,6 +526,11 @@ static int create_gui(struct Screen *screen)
         top + ROW_H * 5, L->replay, cfg.replay);
     gadgets[GID_LOWMEM] = prev = make_check(prev, GID_LOWMEM, RIGHT_X,
         top + ROW_H * 6, L->lowmem, cfg.lowmem);
+
+    gadgets[GID_CD_DEVICE] = prev = make_string(prev, GID_CD_DEVICE, LEFT_X,
+        top + ROW_H * 7, L->cd_device, cfg.cd_device, sizeof(cfg.cd_device) - 1);
+    gadgets[GID_CD_UNIT] = prev = make_integer(prev, GID_CD_UNIT, RIGHT_X,
+        top + ROW_H * 7, L->cd_unit, cfg.cd_unit);
 
     button_y = WIN_H - win->BorderBottom - 36;
     gadgets[GID_SAVE] = prev = make_button(prev, GID_SAVE, 12, button_y, 96, L->save);
@@ -553,7 +648,7 @@ int main(int argc, char **argv)
             if (msg_class == IDCMP_CLOSEWINDOW) {
                 running = 0;
             } else if (msg_class == IDCMP_GADGETUP) {
-                if (gid == GID_RENDERER || gid == GID_DISPLAY) {
+                if (gid == GID_GAME || gid == GID_RENDERER || gid == GID_DISPLAY) {
                     update_renderer_controls();
                 } else if (gid == GID_SAVE) {
                     read_gadgets();

@@ -73,6 +73,57 @@ static int force_null_platform = 0;
 static int Harness_ProcessCommandLine(int* argc, char* argv[]);
 static int Harness_ProcessIniFile(void);
 
+static int Harness_GameDataExists(const char* path) {
+    char marker[MAX_PATH];
+    size_t length;
+    const char* separator;
+
+    if (path == NULL || path[0] == '\0') {
+        return 0;
+    }
+
+    length = strlen(path);
+    separator = path[length - 1] == '/' || path[length - 1] == '\\' || path[length - 1] == ':' ? "" : "/";
+    if (snprintf(marker, sizeof(marker), "%s%sDATA/GENERAL.TXT", path, separator) >= (int)sizeof(marker)) {
+        return 0;
+    }
+    return access(marker, F_OK) == 0;
+}
+
+static int Harness_GetDemoFallbackPath(const char* path, char* fallback, size_t fallback_size) {
+    const char* demo_dir;
+    size_t end;
+    size_t start;
+    size_t name_length;
+
+    if (path == NULL || path[0] == '\0') {
+        return 0;
+    }
+
+    end = strlen(path);
+    while (end > 0 && (path[end - 1] == '/' || path[end - 1] == '\\')) {
+        end--;
+    }
+    start = end;
+    while (start > 0 && path[start - 1] != '/' && path[start - 1] != '\\' && path[start - 1] != ':') {
+        start--;
+    }
+    name_length = end - start;
+
+    if (name_length == 5 && strncasecmp(path + start, "CARMA", name_length) == 0) {
+        demo_dir = "CARMDEMO";
+    } else if (name_length == 8 && strncasecmp(path + start, "CARSPLAT", name_length) == 0) {
+        demo_dir = "SPLATDEMO";
+    } else {
+        return 0;
+    }
+
+    if (snprintf(fallback, fallback_size, "%.*s%s", (int)start, path, demo_dir) >= (int)fallback_size) {
+        return 0;
+    }
+    return 1;
+}
+
 static int Harness_ClampInt(int value, int minimum, int maximum) {
     if (value < minimum) {
         return minimum;
@@ -106,6 +157,9 @@ static int Harness_ProcessLauncherConfigFile(const char* argv0) {
     int lowmem = 0;
     int car_detail = 0;
     int sound_detail = 1;
+    char cd_device[64] = "scsi.device";
+    int cd_unit = 0;
+    char text_value[64];
     int value;
     size_t program_dir_length;
     const char* separator;
@@ -136,9 +190,14 @@ static int Harness_ProcessLauncherConfigFile(const char* argv0) {
     }
 
     while (fgets(line, sizeof(line), f) != NULL) {
-        if (sscanf(line, " %63[^=]=%d", key, &value) != 2) {
+        if (sscanf(line, " %63[^=]=%63[^\r\n]", key, text_value) != 2) {
             continue;
         }
+        if (strcasecmp(key, "cd_device") == 0) {
+            safe_strcpy(cd_device, text_value);
+            continue;
+        }
+        value = atoi(text_value);
         if (strcasecmp(key, "game") == 0) game = value;
         else if (strcasecmp(key, "renderer") == 0) renderer = value;
         else if (strcasecmp(key, "resolution") == 0) resolution = value;
@@ -153,6 +212,7 @@ static int Harness_ProcessLauncherConfigFile(const char* argv0) {
         else if (strcasecmp(key, "lowmem") == 0) lowmem = value;
         else if (strcasecmp(key, "car_detail") == 0) car_detail = value;
         else if (strcasecmp(key, "sound_detail") == 0) sound_detail = value;
+        else if (strcasecmp(key, "cd_unit") == 0) cd_unit = value;
     }
     fclose(f);
 
@@ -188,6 +248,8 @@ static int Harness_ProcessLauncherConfigFile(const char* argv0) {
     harness_game_config.start_full_screen = !windowed;
     gSound_override = !sound;
     harness_game_config.sound_options = !!sound_options;
+    safe_strcpy(harness_game_config.cd_device, cd_device);
+    harness_game_config.cd_unit = Harness_ClampInt(cd_unit, 0, 255);
     gCut_scene_override = !!skip_cutscenes;
     gReplay_override = !replay;
     gAustere_override = !!lowmem;
@@ -375,6 +437,7 @@ void Harness_DetectAndSetWorkingDirectory(char* argv0) {
     char* path;
     char* env_var;
     char pref_path[MAX_PATH];
+    char fallback_path[MAX_PATH];
 
     env_var = getenv("DETHRACE_ROOT_DIR");
 
@@ -391,6 +454,16 @@ void Harness_DetectAndSetWorkingDirectory(char* argv0) {
             OS_GetPrefPath(pref_path, "dethrace");
             path = pref_path;
         }
+    }
+
+    if (path != NULL
+        && strlen(harness_game_config.selected_dir) > 0
+        && !Harness_GameDataExists(path)
+        && Harness_GetDemoFallbackPath(path, fallback_path, sizeof(fallback_path))
+        && Harness_GameDataExists(fallback_path)) {
+        printf("Game data not found in %s; trying %s\n", path, fallback_path);
+        safe_strcpy(harness_game_config.selected_dir, fallback_path);
+        path = harness_game_config.selected_dir;
     }
 
     // if root_dir is null or empty, no need to chdir
@@ -446,6 +519,8 @@ int Harness_Init(int* argc, char* argv[]) {
     harness_game_config.bpp = 8;
     harness_game_config.aga_screen = 0;
     harness_game_config.custom_screen = 0;
+    safe_strcpy(harness_game_config.cd_device, "scsi.device");
+    harness_game_config.cd_unit = 0;
 
     // install signal handler
     harness_game_config.install_signalhandler = 1;
@@ -497,12 +572,18 @@ void Harness_ForceNullPlatform(void) {
 int Harness_ProcessCommandLine(int* argc, char* argv[]) {
     int i, j;
     char* val;
+    char explicit_dir[MAX_PATH] = "";
     for (i = 1; i < *argc;) {
         int consumed = -1;
 
         if (strcasecmp(argv[i], "--use-cfg") == 0) {
             if (Harness_ProcessLauncherConfigFile(argv[0]) != 0) {
                 return 1;
+            }
+            /* A direct launch script may use the shared launcher settings for
+             * graphics and sound while selecting its own game with --dir. */
+            if (explicit_dir[0] != '\0') {
+                safe_strcpy(harness_game_config.selected_dir, explicit_dir);
             }
             consumed = 1;
         } else if (strcasecmp(argv[i], "--game") == 0) {
@@ -522,6 +603,7 @@ int Harness_ProcessCommandLine(int* argc, char* argv[]) {
         } else if (strcasecmp(argv[i], "--dir") == 0) {
             if (i < *argc + 1) {
                 safe_strcpy(harness_game_config.selected_dir, argv[i + 1]);
+                safe_strcpy(explicit_dir, argv[i + 1]);
                 consumed = 2;
             }
         } else if (strcasecmp(argv[i], "--cdcheck") == 0) {

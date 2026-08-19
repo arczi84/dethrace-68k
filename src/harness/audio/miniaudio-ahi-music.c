@@ -30,8 +30,6 @@ struct CD_Volume vol;	/* Volume */
 struct CD_Info info;	/* Device information */
 bool CD_Active = FALSE;
 
-STRPTR device = "scsi.device"; // Nazwa urządzenia
-ULONG unit = 0;
 //cdplayer.library
 
 #endif
@@ -499,8 +497,10 @@ tAudioBackend_error_code AudioBackend_InitCDA(void) {
     }
 
     // Open device
-    if (OpenDevice((STRPTR)device, unit, (struct IORequest *)CD_Request, 0) != IOERR_SUCCESS) {
-        LOG_WARN(" Can't open device %s unit %ld.\n", device, unit);
+    if (OpenDevice((STRPTR)harness_game_config.cd_device, harness_game_config.cd_unit,
+            (struct IORequest *)CD_Request, 0) != IOERR_SUCCESS) {
+        LOG_WARN(" Can't open device %s unit %ld.\n", harness_game_config.cd_device,
+            (LONG)harness_game_config.cd_unit);
         DeleteIORequest((struct IORequest *)CD_Request);
         DeleteMsgPort(CD_Port);
         CloseLibrary(CDPlayerBase);
