@@ -26,6 +26,11 @@
 void QuitGame(void) {
 
     if (harness_game_info.mode == eGame_carmageddon_demo || harness_game_info.mode == eGame_splatpack_demo || harness_game_info.mode == eGame_splatpack_xmas_demo) {
+        /* F10 on Amiga enters QuitGame directly from the race.  The normal
+         * end-of-race path switches to the indexed 320x200 interface buffer
+         * before showing the demo goodbye screen; do the same here so a
+         * low-resolution FLIC is not decoded into the 640x480 RGB565 buffer. */
+        SwitchToLoresMode();
         DoDemoGoodbye();
     }
 

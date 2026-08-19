@@ -336,10 +336,10 @@ br_uintptr_t LollipopizeChildren(br_actor* pActor, void* pArg) {
 // IDA: void __usercall DrawColumns(int pDraw_blends@<EAX>, tTrack_spec *pTrack_spec@<EDX>, int pMin_x@<EBX>, int pMax_x@<ECX>, int pMin_z, int pMax_z, br_matrix34 *pCamera_to_world)
 // FUNCTION: CARM95 0x004a9a01
 void DrawColumns(int pDraw_blends, tTrack_spec* pTrack_spec, int pMin_x, int pMax_x, int pMin_z, int pMax_z, br_matrix34* pCamera_to_world) {
-    tU8 column_x;
-    tU8 column_z;
-    tU8 column_x2;
-    tU8 column_z2;
+    int column_x;
+    int column_z;
+    int column_x2;
+    int column_z2;
     tMatrix_and_actor maa;
     br_actor* blended_polys;
 

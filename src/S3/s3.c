@@ -233,6 +233,13 @@ int S3LoadSoundbank(const char* pSoundbank_filename, int pLow_memory_mode) {
     if (gS3_enabled) {
         dir_name[0] = 0;
         soundbank_filename[0] = 0;
+#ifdef AMIGA
+        /* AmigaDOS accepts DATA/... here, but libnix mishandles ./DATA/... . */
+        strcpy(dir_name, "DATA");
+        strcat(dir_name, gS3_directory_separator);
+        strcat(dir_name, gS3_directory_name);
+        strcat(dir_name, gS3_directory_separator);
+#else
         cur_dir = S3GetCurrentDir();
         strcpy(dir_name, cur_dir);
         strcat(dir_name, gS3_directory_separator);
@@ -240,6 +247,7 @@ int S3LoadSoundbank(const char* pSoundbank_filename, int pLow_memory_mode) {
         strcat(dir_name, gS3_directory_separator);
         strcat(dir_name, gS3_directory_name);
         strcat(dir_name, gS3_directory_separator);
+#endif
         strcpy(soundbank_filename, pSoundbank_filename);
         buffer = S3LoadSoundBankFile(soundbank_filename);
         if (!buffer) {
@@ -1197,9 +1205,14 @@ int S3StopOutletSound(tS3_outlet* pOutlet) {
 
 char* S3GetCurrentDir(void) {
     if (!gS3_have_current_dir) {
+#ifdef AMIGA
+        /* --dir has already selected the game root. */
+        strcpy(gS3_current_dir, ".");
+#else
         if (getcwd(gS3_current_dir, 260) == NULL) {
             LOG_PANIC("failed to call getcwd"); // added by dethrace
         };
+#endif
         gS3_have_current_dir = 1;
     }
     return gS3_current_dir;

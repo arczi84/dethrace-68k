@@ -4,3 +4,6 @@
 reccmp-user.yml
 reccmp-build.yml
 reccmp-report*
+/tools/launcher/DethraceLauncher
+/tools/launcher/DethraceLauncherDemo
+/tools/launcher/*.map

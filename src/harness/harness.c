@@ -14,7 +14,12 @@
 #include <sys/stat.h>
 
 extern br_uint_32 gI_am_cheating;
+extern int gAustere_override;
+extern int gCar_simplification_level;
+extern int gCut_scene_override;
+extern int gReplay_override;
 extern int gSound_override;
+extern int gSound_detail_level;
 extern int gSausage_override;
 extern int gGraf_spec_index;
 
@@ -67,6 +72,131 @@ static int force_null_platform = 0;
 
 static int Harness_ProcessCommandLine(int* argc, char* argv[]);
 static int Harness_ProcessIniFile(void);
+
+static int Harness_ClampInt(int value, int minimum, int maximum) {
+    if (value < minimum) {
+        return minimum;
+    }
+    if (value > maximum) {
+        return maximum;
+    }
+    return value;
+}
+
+static int Harness_ProcessLauncherConfigFile(const char* argv0) {
+    static const int fps_values[] = { 0, 25, 30, 50, 60 };
+    char config_path[MAX_PATH];
+    char game_path[MAX_PATH];
+    char line[128];
+    char key[64];
+    const char* program_dir;
+    const char* game_dir = "CARMA";
+    FILE* f;
+    int game = 0;
+    int renderer = 0;
+    int resolution = 0;
+    int display = 0;
+    int fps = 0;
+    int show_fps = 0;
+    int windowed = 0;
+    int sound = 1;
+    int sound_options = 0;
+    int skip_cutscenes = 0;
+    int replay = 1;
+    int lowmem = 0;
+    int car_detail = 0;
+    int sound_detail = 1;
+    int value;
+    size_t program_dir_length;
+    const char* separator;
+
+    program_dir = OS_GetWorkingDirectory((char*)argv0);
+    if (program_dir == NULL) {
+        fprintf(stderr, "Unable to locate dethrace-launcher.cfg\n");
+        return 1;
+    }
+
+    program_dir_length = strlen(program_dir);
+    separator = program_dir_length > 0
+            && (program_dir[program_dir_length - 1] == '/'
+                || program_dir[program_dir_length - 1] == '\\'
+                || program_dir[program_dir_length - 1] == ':')
+        ? ""
+        : "/";
+    if (snprintf(config_path, sizeof(config_path), "%s%sdethrace-launcher.cfg",
+            program_dir, separator) >= (int)sizeof(config_path)) {
+        fprintf(stderr, "Path to dethrace-launcher.cfg is too long\n");
+        return 1;
+    }
+
+    f = fopen(config_path, "r");
+    if (f == NULL) {
+        fprintf(stderr, "Unable to open %s: %s\n", config_path, strerror(errno));
+        return 1;
+    }
+
+    while (fgets(line, sizeof(line), f) != NULL) {
+        if (sscanf(line, " %63[^=]=%d", key, &value) != 2) {
+            continue;
+        }
+        if (strcasecmp(key, "game") == 0) game = value;
+        else if (strcasecmp(key, "renderer") == 0) renderer = value;
+        else if (strcasecmp(key, "resolution") == 0) resolution = value;
+        else if (strcasecmp(key, "display") == 0) display = value;
+        else if (strcasecmp(key, "fps") == 0) fps = value;
+        else if (strcasecmp(key, "show_fps") == 0) show_fps = value;
+        else if (strcasecmp(key, "windowed") == 0) windowed = value;
+        else if (strcasecmp(key, "sound") == 0) sound = value;
+        else if (strcasecmp(key, "sound_options") == 0) sound_options = value;
+        else if (strcasecmp(key, "skip_cutscenes") == 0) skip_cutscenes = value;
+        else if (strcasecmp(key, "replay") == 0) replay = value;
+        else if (strcasecmp(key, "lowmem") == 0) lowmem = value;
+        else if (strcasecmp(key, "car_detail") == 0) car_detail = value;
+        else if (strcasecmp(key, "sound_detail") == 0) sound_detail = value;
+    }
+    fclose(f);
+
+    game = Harness_ClampInt(game, 0, 3);
+    renderer = !!renderer;
+    resolution = !!resolution;
+    display = Harness_ClampInt(display, 0, 3);
+    fps = Harness_ClampInt(fps, 0, 4);
+
+    if (game == 1) {
+        game_dir = "CARSPLAT";
+    } else if (game == 2) {
+        game_dir = "CARMDEMO";
+    } else if (game == 3) {
+        game_dir = "SPLATDEMO";
+    }
+    if (snprintf(game_path, sizeof(game_path), "%s%s%s",
+            program_dir, separator, game_dir) >= (int)sizeof(game_path)) {
+        fprintf(stderr, "Configured game path is too long\n");
+        return 1;
+    }
+
+    safe_strcpy(harness_game_config.selected_dir, game_path);
+    harness_game_config.opengl_3dfx_mode = renderer;
+    /* The original Carmageddon demo has no DATA/64X48X8 set.  The old
+     * launcher omitted -hires for this exact combination. */
+    gGraf_spec_index = game == 2 && !renderer ? 0 : resolution;
+    harness_game_config.bpp = display == 2 ? 6 : 8;
+    harness_game_config.aga_screen = display == 1;
+    harness_game_config.custom_screen = display == 3;
+    harness_game_config.fps = fps_values[fps];
+    harness_game_config.show_fps = !!show_fps;
+    harness_game_config.start_full_screen = !windowed;
+    gSound_override = !sound;
+    harness_game_config.sound_options = !!sound_options;
+    gCut_scene_override = !!skip_cutscenes;
+    gReplay_override = !replay;
+    gAustere_override = !!lowmem;
+    gCar_simplification_level = Harness_ClampInt(car_detail, 0, 4);
+    gSound_detail_level = Harness_ClampInt(sound_detail, 0, 2);
+
+    printf("Using launcher config: %s\n", config_path);
+    return 0;
+}
 
 static int Harness_InitPlatform(void) {
     int required_caps = 0;
@@ -286,9 +416,11 @@ int Harness_Init(int* argc, char* argv[]) {
     // AmigaOS Delay() has a 20 ms minimum step, so a 60 FPS limiter would
     // stall otherwise fast frames. Match the stable Amiga port and run unlocked.
     harness_game_config.fps = 0;
+    harness_game_config.show_fps = 0;
 #else
     // limit to 60 fps by default
     harness_game_config.fps = 60;
+    harness_game_config.show_fps = 0;
 #endif
     // do not freeze timer
     harness_game_config.freeze_timer = 0;
@@ -368,7 +500,12 @@ int Harness_ProcessCommandLine(int* argc, char* argv[]) {
     for (i = 1; i < *argc;) {
         int consumed = -1;
 
-        if (strcasecmp(argv[i], "--game") == 0) {
+        if (strcasecmp(argv[i], "--use-cfg") == 0) {
+            if (Harness_ProcessLauncherConfigFile(argv[0]) != 0) {
+                return 1;
+            }
+            consumed = 1;
+        } else if (strcasecmp(argv[i], "--game") == 0) {
             if (i < *argc + 1) {
                 val = argv[i + 1];
                 for (i = 0; i < harness_game_config.game_dirs_count; i++) {
@@ -404,6 +541,9 @@ int Harness_ProcessCommandLine(int* argc, char* argv[]) {
             char* s = strstr(argv[i], "=");
             harness_game_config.fps = atoi(s + 1);
             LOG_INFO2("FPS limiter set to %f", harness_game_config.fps);
+            consumed = 1;
+        } else if (strcasecmp(argv[i], "--show-fps") == 0) {
+            harness_game_config.show_fps = 1;
             consumed = 1;
         } else if (strcasecmp(argv[i], "--freeze-timer") == 0) {
             LOG_INFO("Timer frozen");

@@ -84,6 +84,24 @@ if(DETHRACE_PLATFORM_AMIGA)
         platforms/amiga_rawcode_to_dinput.h
     )
     target_compile_definitions(harness PRIVATE DETHRACE_PLATFORM_AMIGA AMIGA)
+    if(DETHRACE_AMIGA_SHARED_MINIGL)
+        target_compile_definitions(harness PRIVATE DETHRACE_AMIGA_SHARED_MINIGL)
+        if(DETHRACE_AMIGA_SHARED_MINIGL_DISPATCH)
+            target_compile_definitions(harness PRIVATE DETHRACE_AMIGA_SHARED_MINIGL_DISPATCH)
+        else()
+            target_compile_definitions(harness PRIVATE MINIGL_REGISTER_LVO)
+        endif()
+        target_include_directories(harness BEFORE PRIVATE
+            "${DETHRACE_AMIGA_SHARED_MINIGL_ROOT}/include"
+        )
+        target_link_libraries(harness PRIVATE
+            "${DETHRACE_AMIGA_SHARED_MINIGL_IMPORT_LIBRARY}"
+        )
+    else()
+        target_include_directories(harness BEFORE PRIVATE
+            "${DETHRACE_AMIGA_MINIGL_Q3_ROOT}/include"
+        )
+    endif()
 endif()
 
 if(DETHRACE_PLATFORM_SDL1)

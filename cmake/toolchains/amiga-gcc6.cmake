@@ -13,7 +13,7 @@ set_property(CACHE M68K_FPU PROPERTY STRINGS ${M68K_FPU_TYPES})
 
 set(M68K_TOOLCHAIN_PATH "/opt/amiga-debian" CACHE PATH
     "Path to the bebbo Amiga GCC 6.5.0b 241006 toolchain")
-set(AMIGA_SUPPORT_PATH "/mnt/d/amiga-gcc2" CACHE PATH
+set(AMIGA_SUPPORT_PATH "/mnt/d/dev/Amiga_SDK/common" CACHE PATH
     "Path containing the Amiga support headers and C2P objects")
 
 set(CMAKE_SYSROOT "${M68K_TOOLCHAIN_PATH}")

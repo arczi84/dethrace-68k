@@ -3,6 +3,8 @@
 #include <graphics/gfx.h>
 #include <graphics/view.h>
 #include <graphics/gfxbase.h>
+#include <graphics/displayinfo.h>
+#include <graphics/modeid.h>
 #include <intuition/intuition.h>
 #include <cybergraphx/cybergraphics.h>
 
@@ -11,7 +13,12 @@
 #include <proto/graphics.h>
 #include <proto/cybergraphics.h>
 #include <inline/timer.h>
+#ifdef DETHRACE_AMIGA_SHARED_MINIGL
+#include <proto/minigl.h>
+#include <clib/minigl_open_protos.h>
+#else
 #include <mgl/gl.h>
+#endif
 
 #include <stdio.h>
 #include <string.h>
@@ -21,6 +28,7 @@
 #include "harness/config.h"
 #include "harness/hooks.h"
 #include "harness/trace.h"
+#include "common/globvars.h"
 #include "common/graphics.h"
 #include <SDI_compiler.h>
 
@@ -49,8 +57,14 @@ extern void c2p1x1_8_c5_bm_040(int chunkyx __asm("d0"), int chunkyy __asm("d1"),
 extern void c2p1x1_6_c5_bm_040(int chunkyx __asm("d0"), int chunkyy __asm("d1"), int offsx __asm("d2"), int offsy __asm("d3"), void* c2pscreen __asm("a0"), struct BitMap* bitmap __asm("a1"));
 extern void c2p1x1_4_c5_bm(int chunkyx __asm("d0"), int chunkyy __asm("d1"), int offsx __asm("d2"), int offsy __asm("d3"), void* c2pscreen __asm("a0"), struct BitMap* bitmap __asm("a1"));
 
-/* MiniGL owns this process-global library base. */
+#ifdef DETHRACE_AMIGA_SHARED_MINIGL
+/* Shared MiniGL owns its private CyberGraphX base.  The application still
+ * needs its own base for the native software renderer. */
+struct Library *CyberGfxBase = NULL;
+#else
+/* Statically linked MiniGL owns this process-global library base. */
 extern struct Library *CyberGfxBase;
+#endif
 static struct timeval basetime;
 struct Library *TimerBase;
 
@@ -81,13 +95,27 @@ static ULONG last_frame_time = 0;
 #define HAM_MODG 0x30  /* Modify only green component (bits 11xxxxxx) */
 
 static UBYTE *ham_buffer = NULL;
+static UBYTE *ham_fade_buffer = NULL;
+static UBYTE *ham_source_buffer = NULL;
+static int ham_buffer_capacity = 0;
+static bool ham_source_frame_valid = 0;
 static bool is_ham_mode = 0;
 static bool is_aga_mode = 0;
 static bool is_opengl_mode = 0;
+static bool owns_amiga_screen = 0;
+static bool is_public_window = 0;
 extern int gGraf_spec_index;
 
 static UWORD current_r = 0, current_g = 0, current_b = 0;
 static int ham_stats[4] = {0, 0, 0, 0};  /* Stats for HOLD, MODB, MODR, MODG */
+static UBYTE ham_best_register[256];
+static int ham_best_register_error[256];
+static ULONG ham_reference_palette[256];
+static bool ham_reference_palette_valid = 0;
+static bool ham_encoded_frame_valid = 0;
+static int ham_fade_degree = 256;
+static int ham_cached_width = 0;
+static int ham_cached_height = 0;
 
 /* Macros for math operations */
 #define ABS(x) ((x) < 0 ? -(x) : (x))
@@ -302,7 +330,28 @@ static void* create_window_and_renderer_pal(char* title, int x, int y, int width
 
     /* Open HAM6 screen with optimal mode ID */
     if (is_ham_mode) {
-        modeID = LORES_KEY | HAM_KEY;
+        if (width >= 640) {
+            /* BestModeID() may prefer a 320-wide HAM mode even for a 640
+             * framebuffer.  Select the native AGA PAL HiRes HAM interlaced
+             * mode explicitly; OpenScreenTags clips its 512-line PAL raster
+             * to the requested 640x480 game display. */
+            modeID = PAL_MONITOR_ID | HIRESHAMLACE_KEY;
+            width = 640;
+            height = 480;
+        } else {
+            modeID = BestModeID(
+                BIDTAG_NominalWidth, width,
+                BIDTAG_NominalHeight, height,
+                BIDTAG_DesiredWidth, width,
+                BIDTAG_DesiredHeight, height,
+                BIDTAG_Depth, HAM6_DEPTH,
+                BIDTAG_DIPFMustHave, DIPF_IS_HAM,
+                TAG_DONE);
+        }
+        if (modeID == INVALID_ID) {
+            printf("ERROR: No HAM6 mode available for %ldx%ld\n", width, height);
+            exit(1);
+        }
     }
     else {
         //modeID = LORES_KEY ;//| HIRESLACE_KEY;
@@ -340,6 +389,8 @@ static void* create_window_and_renderer_pal(char* title, int x, int y, int width
         printf("ERROR: Failed to open HAM6 screen\n");
         exit(1);
     }
+    owns_amiga_screen = 1;
+    is_public_window = 0;
 
 
     BytesPerRow = amiga_screen->RastPort.BitMap->BytesPerRow;
@@ -372,8 +423,24 @@ static void* create_window_and_renderer_pal(char* title, int x, int y, int width
 
     /* Allocate HAM buffer */
     ham_buffer = AllocVec(width * height, MEMF_CLEAR | MEMF_ANY);
-    if (!ham_buffer) {
-        printf("ERROR: Failed to allocate HAM buffer\n");
+    ham_fade_buffer = AllocVec(width * height, MEMF_CLEAR | MEMF_ANY);
+    ham_source_buffer = AllocVec(width * height, MEMF_CLEAR | MEMF_ANY);
+    ham_buffer_capacity = width * height;
+    if (!ham_buffer || !ham_fade_buffer || !ham_source_buffer) {
+        printf("ERROR: Failed to allocate HAM buffers\n");
+        if (ham_buffer) {
+            FreeVec(ham_buffer);
+            ham_buffer = NULL;
+        }
+        if (ham_fade_buffer) {
+            FreeVec(ham_fade_buffer);
+            ham_fade_buffer = NULL;
+        }
+        if (ham_source_buffer) {
+            FreeVec(ham_source_buffer);
+            ham_source_buffer = NULL;
+        }
+        ham_buffer_capacity = 0;
         CloseWindow(amiga_window);
         CloseScreen(amiga_screen);
         exit(1);
@@ -386,12 +453,54 @@ static void* create_window_and_renderer(char* title, int x, int y, int width, in
     initializeAmigaRawKeyNums();
 
     ULONG modeID = 0;
+    bool use_public_window = !harness_game_config.start_full_screen
+        && !is_aga_mode && !is_ham_mode;
     if (!is_aga_mode) {
         CyberGfxBase = OpenLibrary("cybergraphics.library", 37);
         if (!CyberGfxBase) {
             printf("ERROR: can't open cybergraphics.library V37.\n");
             exit(1);
         }
+    }
+
+    if (use_public_window) {
+        amiga_screen = LockPubScreen(NULL);
+        if (!amiga_screen) {
+            printf("ERROR: Failed to lock public screen\n");
+            exit(1);
+        }
+
+        amiga_window = OpenWindowTags(NULL,
+            WA_PubScreen, amiga_screen,
+            WA_Left, 20,
+            WA_Top, 20,
+            WA_InnerWidth, width,
+            WA_InnerHeight, height,
+            WA_Title, (ULONG)title,
+            WA_IDCMP, IDCMP_MOUSEBUTTONS | IDCMP_RAWKEY | IDCMP_MOUSEMOVE | IDCMP_CLOSEWINDOW,
+            WA_DragBar, TRUE,
+            WA_DepthGadget, TRUE,
+            WA_CloseGadget, TRUE,
+            WA_RMBTrap, TRUE,
+            WA_Activate, TRUE,
+            WA_ReportMouse, TRUE,
+            TAG_END);
+
+        UnlockPubScreen(NULL, amiga_screen);
+        if (!amiga_window) {
+            amiga_screen = NULL;
+            printf("ERROR: Failed to open software window\n");
+            exit(1);
+        }
+
+        owns_amiga_screen = 0;
+        is_public_window = 1;
+        render_width = width;
+        render_height = height;
+        BytesPerRow = width;
+        rp = amiga_window->RPort;
+        cm = amiga_screen->ViewPort.ColorMap;
+        return amiga_window;
     }
 
     /* Open HAM6 screen with optimal mode ID */
@@ -442,6 +551,8 @@ static void* create_window_and_renderer(char* title, int x, int y, int width, in
         printf("ERROR: Failed to open screen\n");
         exit(1);
     }
+    owns_amiga_screen = 1;
+    is_public_window = 0;
 
     BytesPerRow = ((amiga_screen->Width + 15) & ~15);
 
@@ -489,8 +600,8 @@ static void present_screen8(br_pixelmap* src) {
         return;
     }
 
-    int screen_width = amiga_screen->Width;
-    int screen_height = amiga_screen->Height;
+    int screen_width = is_public_window ? render_width : amiga_screen->Width;
+    int screen_height = is_public_window ? render_height : amiga_screen->Height;
 
     if (!screen_buffers[0]) {
         screen_buffers[0] = AllocVec(BytesPerRow * screen_height, MEMF_FAST);
@@ -563,37 +674,129 @@ if (!is_aga_mode) {
 }
 //#if 1
 
+static void rebuild_ham6_register_cache(void) {
+    int palette_index;
+    int reg;
+
+    for (palette_index = 0; palette_index < 256; palette_index++) {
+        ULONG colour = converted_palette[palette_index];
+        UBYTE r4 = ((colour >> 16) & 0xff) >> 4;
+        UBYTE g4 = ((colour >> 8) & 0xff) >> 4;
+        UBYTE b4 = (colour & 0xff) >> 4;
+        int best_reg = 0;
+        int best_error = 999999;
+
+        for (reg = 0; reg < 16; reg++) {
+            ULONG reg_colour = converted_palette[reg];
+            UBYTE reg_r4 = ((reg_colour >> 16) & 0xff) >> 4;
+            UBYTE reg_g4 = ((reg_colour >> 8) & 0xff) >> 4;
+            UBYTE reg_b4 = (reg_colour & 0xff) >> 4;
+            int error = color_distance_squared(r4, g4, b4,
+                reg_r4, reg_g4, reg_b4);
+
+            if (error < best_error) {
+                best_error = error;
+                best_reg = reg;
+            }
+        }
+        ham_best_register[palette_index] = best_reg;
+        ham_best_register_error[palette_index] = best_error;
+    }
+}
+
+static int detect_ham6_fade_degree(const PALETTEENTRY_ *pal) {
+    br_colour *reference;
+    int max_reference = 0;
+    int matching_value = 0;
+    int candidate;
+    int first;
+    int last;
+    int degree;
+    int i;
+
+    if (!gCurrent_palette || !gCurrent_palette->pixels) {
+        return -1;
+    }
+    reference = (br_colour *)gCurrent_palette->pixels;
+
+    for (i = 0; i < 256; i++) {
+        int values[3] = { BR_RED(reference[i]), BR_GRN(reference[i]), BR_BLU(reference[i]) };
+        int faded[3] = { pal[i].peRed, pal[i].peGreen, pal[i].peBlue };
+        int component;
+        for (component = 0; component < 3; component++) {
+            if (values[component] > max_reference) {
+                max_reference = values[component];
+                matching_value = faded[component];
+            }
+        }
+    }
+
+    if (max_reference == 0) {
+        for (i = 0; i < 256; i++) {
+            if (pal[i].peRed || pal[i].peGreen || pal[i].peBlue) {
+                return -1;
+            }
+        }
+        return 256;
+    }
+
+    candidate = (matching_value * 256 + max_reference / 2) / max_reference;
+    first = candidate > 2 ? candidate - 2 : 0;
+    last = candidate < 254 ? candidate + 2 : 256;
+    for (degree = first; degree <= last; degree++) {
+        bool matches = 1;
+        for (i = 0; i < 256 && matches; i++) {
+            if (pal[i].peRed != degree * BR_RED(reference[i]) / 256
+                || pal[i].peGreen != degree * BR_GRN(reference[i]) / 256
+                || pal[i].peBlue != degree * BR_BLU(reference[i]) / 256) {
+                matches = 0;
+            }
+        }
+        if (matches) {
+            return degree;
+        }
+    }
+    return -1;
+}
+
+static bool set_ham6_reference_palette(const PALETTEENTRY_ *pal, int fade_degree) {
+    br_colour *reference = gCurrent_palette && gCurrent_palette->pixels
+        ? (br_colour *)gCurrent_palette->pixels : NULL;
+    bool changed = !ham_reference_palette_valid;
+    int i;
+
+    for (i = 0; i < 256; i++) {
+        ULONG colour;
+        if (fade_degree >= 0 && reference) {
+            colour = (BR_RED(reference[i]) << 16)
+                | (BR_GRN(reference[i]) << 8) | BR_BLU(reference[i]);
+        } else {
+            colour = (pal[i].peRed << 16) | (pal[i].peGreen << 8) | pal[i].peBlue;
+        }
+        if (ham_reference_palette[i] != colour) {
+            changed = 1;
+        }
+        ham_reference_palette[i] = colour;
+        converted_palette[i] = colour;
+    }
+    ham_reference_palette_valid = 1;
+    if (changed) {
+        rebuild_ham6_register_cache();
+        ham_encoded_frame_valid = 0;
+    }
+    return changed;
+}
+
 /* Find the best HAM6 representation for a pixel */
-static UBYTE find_best_ham6_pixel(UBYTE r, UBYTE g, UBYTE b) {
+static UBYTE find_best_ham6_pixel(UBYTE palette_index, UBYTE r, UBYTE g, UBYTE b) {
     /* Scale down from 8-bit to 4-bit color */
     UBYTE r4 = r >> 4;
     UBYTE g4 = g >> 4;
     UBYTE b4 = b >> 4;
 
     /* Option 1: Use a color register */
-    int best_reg = 0;
-    int best_reg_error = 999999;
-
-    for (int i = 0; i < 16; i++) {
-        /* Get color from register */
-        ULONG reg_color = converted_palette[i];
-        UBYTE reg_r = (reg_color >> 16) & 0xFF;
-        UBYTE reg_g = (reg_color >> 8) & 0xFF;
-        UBYTE reg_b = reg_color & 0xFF;
-
-        /* Convert 8-bit to 4-bit for comparison */
-        reg_r >>= 4;
-        reg_g >>= 4;
-        reg_b >>= 4;
-
-        /* Calculate error */
-        int error = color_distance_squared(r4, g4, b4, reg_r, reg_g, reg_b);
-
-        if (error < best_reg_error) {
-            best_reg_error = error;
-            best_reg = i;
-        }
-    }
+    int best_reg = ham_best_register[palette_index];
+    int best_reg_error = ham_best_register_error[palette_index];
 
     /* Option 2: Modify red */
     int error_mod_r = color_distance_squared(r4, g4, b4, r4, current_g, current_b);
@@ -697,7 +900,7 @@ static void present_screen_ham6_3buf(br_pixelmap* src) {
                 UBYTE b = pixel_color & 0xFF;
 
                 /* Find best HAM6 representation */
-                ham_buffers[render_buffer][dst_index] = find_best_ham6_pixel(r, g, b);
+                ham_buffers[render_buffer][dst_index] = find_best_ham6_pixel(src_pixels[src_index], r, g, b);
             } else {
                 /* Out of bounds - use black */
                 ham_buffers[render_buffer][dst_index] = 0;
@@ -770,19 +973,49 @@ void cleanup_ham6_buffers(void) {
         }
     }
 }
-/* Present screen using HAM6 mode */
-static void present_screen_ham6(br_pixelmap* src) {
-    if (!rp || !src || !src->pixels || !ham_buffer) {
-        printf("ERROR: Invalid parameters for HAM6 rendering\n");
-      return;
+
+static void display_cached_ham6(void) {
+    UBYTE *display_buffer = ham_buffer;
+    int pixel_count = ham_cached_width * ham_cached_height;
+    int i;
+
+    if (!ham_encoded_frame_valid || ham_cached_width <= 0
+        || ham_cached_height <= 0) {
+        return;
     }
 
+    if (ham_fade_degree < 256 && ham_fade_buffer) {
+        for (i = 0; i < pixel_count; i++) {
+            UBYTE pixel = ham_buffer[i];
+            if (pixel & 0x30) {
+                int faded_component = ((pixel & 0x0f) * ham_fade_degree + 128) / 256;
+                if (faded_component > 15) {
+                    faded_component = 15;
+                }
+                pixel = (pixel & 0x30)
+                    | faded_component;
+            }
+            ham_fade_buffer[i] = pixel;
+        }
+        display_buffer = ham_fade_buffer;
+    }
+
+    /* Use graphics.library for HAM output.  The custom 6-plane C2P routine
+     * was the only rendering path exercised by HAM6 before the race but not
+     * by ordinary software mode, and it was corrupting state later consumed
+     * by the first 3D track rasterisation. */
+    for (i = 0; i < ham_cached_height; i++) {
+        WritePixelLine8(rp, 0, i, ham_cached_width,
+            &display_buffer[i * ham_cached_width], NULL);
+    }
+}
+
+static void encode_owned_screen_ham6(void) {
     /* Reset HAM statistics */
     ham_stats[0] = ham_stats[1] = ham_stats[2] = ham_stats[3] = 0;
 
-    int screen_width = amiga_screen->Width;
-    int screen_height = amiga_screen->Height;
-    UBYTE *src_pixels = (UBYTE *)src->pixels;
+    int screen_width = ham_cached_width;
+    int screen_height = ham_cached_height;
 
     /* Reset current color at beginning of each frame */
     current_r = current_g = current_b = 0;
@@ -793,22 +1026,15 @@ static void present_screen_ham6(br_pixelmap* src) {
         current_r = current_g = current_b = 0;
 
         for (int x = 0; x < screen_width; x++) {
-            int src_index = y * src->width + x;
+            int src_index = y * screen_width + x;
             int dst_index = y * screen_width + x;
+            UBYTE palette_index = ham_source_buffer[src_index];
+            ULONG pixel_color = converted_palette[palette_index];
+            UBYTE r = (pixel_color >> 16) & 0xFF;
+            UBYTE g = (pixel_color >> 8) & 0xFF;
+            UBYTE b = pixel_color & 0xFF;
 
-            if (src_index < src->width * src->height) {
-                /* Get pixel color from palette */
-                ULONG pixel_color = converted_palette[src_pixels[src_index]];
-                UBYTE r = (pixel_color >> 16) & 0xFF;
-                UBYTE g = (pixel_color >> 8) & 0xFF;
-                UBYTE b = pixel_color & 0xFF;
-
-                /* Find best HAM6 representation */
-                ham_buffer[dst_index] = find_best_ham6_pixel(r, g, b);
-            } else {
-                /* Out of bounds - use black */
-                ham_buffer[dst_index] = 0;
-            }
+            ham_buffer[dst_index] = find_best_ham6_pixel(palette_index, r, g, b);
         }
     }
 #if 0
@@ -819,38 +1045,40 @@ static void present_screen_ham6(br_pixelmap* src) {
        //        ham_stats[0], ham_stats[1], ham_stats[2], ham_stats[3]);
     }
 #endif
-#if USE_WPAL8
-    /* Display the HAM6 image */
-    for (int y = 0; y < screen_height; y++) {
-        WritePixelLine8(rp, 0, y, screen_width, &ham_buffer[y * screen_width], NULL);
-    }
-#else
-    struct BitMap ham6_bm = {
-        .BytesPerRow = (src->width + 15) / 16 * 2,     // 1 bajt = 8 pikseli w trybie planar
-        .Rows        = screen_height,
-        .Flags       = 0,
-        .Depth       = 6,                   // HAM6 używa 6 płaszczyzn bitowych
-        .Planes      = {
-            amiga_screen->RastPort.BitMap->Planes[0],
-            amiga_screen->RastPort.BitMap->Planes[1],
-            amiga_screen->RastPort.BitMap->Planes[2],
-            amiga_screen->RastPort.BitMap->Planes[3],
-            amiga_screen->RastPort.BitMap->Planes[4],
-            amiga_screen->RastPort.BitMap->Planes[5]
-        }
-    };
+    ham_encoded_frame_valid = 1;
+    display_cached_ham6();
+}
 
-    // Użyj funkcji c2p dla 6 płaszczyzn zamiast 8
-    c2p1x1_6_c5_bm_040(
-        src->width,
-        src->height,
-        0,             // scroffsx
-        0,             // scroffsy
-        ham_buffer,    // Zakładam, że ham_buffer zawiera dane chunky
-        &ham6_bm
-    );
-#endif
-    last_screen_src = src;
+/* Present screen using HAM6 mode */
+static void present_screen_ham6(br_pixelmap* src) {
+    int screen_width;
+    int screen_height;
+    int y;
+
+    if (!rp || !src || !src->pixels || !ham_buffer || !ham_source_buffer) {
+        printf("ERROR: Invalid parameters for HAM6 rendering\n");
+        return;
+    }
+
+    /* Keep an owned indexed copy. Palette callbacks can outlive the game's
+     * pixelmap during the menu-to-race transition, so retaining src here is
+     * unsafe and used to make HAM6 hang while the music kept playing. */
+    screen_width = src->width;
+    screen_height = src->height;
+    if (screen_width <= 0 || screen_height <= 0
+        || screen_width * screen_height > ham_buffer_capacity
+        || src->row_bytes < screen_width) {
+        printf("ERROR: Invalid HAM6 source dimensions\n");
+        return;
+    }
+    for (y = 0; y < screen_height; y++) {
+        memcpy(ham_source_buffer + y * screen_width,
+            (UBYTE *)src->pixels + y * src->row_bytes, screen_width);
+    }
+    ham_cached_width = screen_width;
+    ham_cached_height = screen_height;
+    ham_source_frame_valid = 1;
+    encode_owned_screen_ham6();
 
     /* Apply FPS limiting */
     if (harness_game_config.fps != 0) {
@@ -859,85 +1087,38 @@ static void present_screen_ham6(br_pixelmap* src) {
 }
 
 void set_palette_ham6_normal(PALETTEENTRY_ *pal) {
+    /* Palette fades run in a tight 500 ms loop without swapping frames.
+     * Synchronise each visible HAM update to vertical blank to avoid the
+     * characteristic horizontal tearing/banding. */
+    if (ham_encoded_frame_valid) {
+        WaitTOF();
+    }
+
     // Ustaw bazowe 16 kolorów dla HAM6
     for (int i = 0; i < 16; i++) {
         // Konwersja z wartości 8-bit (0-255) na 4-bit (0-15)
-        UBYTE r4 = (pal[i].peRed * 15) / 255;
-        UBYTE g4 = (pal[i].peGreen * 15) / 255;
-        UBYTE b4 = (pal[i].peBlue * 15) / 255;
+        UBYTE r4 = (pal[i].peRed * 15 + 127) / 255;
+        UBYTE g4 = (pal[i].peGreen * 15 + 127) / 255;
+        UBYTE b4 = (pal[i].peBlue * 15 + 127) / 255;
 
         // Ustaw kolor w palecie Amigi
         SetRGB4(&amiga_screen->ViewPort, i, r4, g4, b4);
 
-        // Ustaw ten sam kolor w converted_palette (format 24-bit)
-        converted_palette[i] = (pal[i].peRed << 16) | (pal[i].peGreen << 8) | pal[i].peBlue;
     }
 
-    // Opcjonalnie: ustaw pozostałe kolory (jeśli są używane poza HAM)
-    for (int i = 16; i < 256; i++) {
-        converted_palette[i] = (pal[i].peRed << 16) | (pal[i].peGreen << 8) | pal[i].peBlue;
+    /* Re-encode the cached indexed frame against the actual faded palette.
+     * Scaling already-encoded HAM modify nibbles is faster, but introduces
+     * visible colour steps and dirty edges because HAM colour decisions are
+     * dependent on the preceding pixel. */
+    ham_fade_degree = 256;
+    set_ham6_reference_palette(pal, -1);
+    if (ham_source_frame_valid) {
+        encode_owned_screen_ham6();
     }
 }
 /* Initialize HAM6 palette */
 static void set_palette_ham6_loading(PALETTEENTRY_* pal) {
-  /* Ustawienie bazowej palety 16 kolorów z pliku IFF */
-
-    /* Ustawienie bazowej palety 16 kolorów dla menu Carmageddon */
-    /* Ustawienie bazowej palety 16 kolorów na podstawie podanych wartości */
-    SetRGB4(&amiga_screen->ViewPort, 0, 0, 0, 0);      /* Czarny */
-    SetRGB4(&amiga_screen->ViewPort, 1, 5, 0, 0);      /* Ciemny czerwony */
-    SetRGB4(&amiga_screen->ViewPort, 2, 9, 0, 0);      /* Średni czerwony */
-    SetRGB4(&amiga_screen->ViewPort, 3, 12, 0, 0);     /* Jasny czerwony */
-    SetRGB4(&amiga_screen->ViewPort, 4, 15, 0, 0);     /* Czysty czerwony */
-    SetRGB4(&amiga_screen->ViewPort, 5, 15, 4, 4);     /* Jasny czerwony z odrobiną zieleni i niebieskiego */
-    SetRGB4(&amiga_screen->ViewPort, 6, 15, 7, 7);     /* Jaśniejszy czerwony z więcej zielonego i niebieskiego */
-    SetRGB4(&amiga_screen->ViewPort, 7, 15, 11, 11);   /* Bardzo jasny czerwony */
-    SetRGB4(&amiga_screen->ViewPort, 8, 3, 1, 0);      /* Ciemny brązowy */
-    SetRGB4(&amiga_screen->ViewPort, 9, 6, 1, 0);      /* Brązowy */
-    SetRGB4(&amiga_screen->ViewPort, 10, 9, 1, 0);     /* Jaśniejszy brązowy */
-    SetRGB4(&amiga_screen->ViewPort, 11, 12, 2, 0);    /* Ciemny pomarańczowy */
-    SetRGB4(&amiga_screen->ViewPort, 12, 15, 2, 0);    /* Pomarańczowy */
-    SetRGB4(&amiga_screen->ViewPort, 13, 15, 6, 4);    /* Jaśniejszy pomarańczowy */
-    SetRGB4(&amiga_screen->ViewPort, 14, 15, 9, 8);    /* Jasny łososiowy */
-    SetRGB4(&amiga_screen->ViewPort, 15, 15, 12, 12);  /* Bardzo jasny różowy (prawie biały z odcieniem czerwieni) */
-
-    /* Te same kolory w converted_palette */
-    converted_palette[0] = 0x000000;   /* Czarny */
-    converted_palette[1] = 0x550000;   /* Ciemny czerwony */
-    converted_palette[2] = 0x990000;   /* Średni czerwony */
-    converted_palette[3] = 0xCC0000;   /* Jasny czerwony */
-    converted_palette[4] = 0xFF0000;   /* Czysty czerwony */
-    converted_palette[5] = 0xFF4444;   /* Jasny czerwony z odrobiną zieleni i niebieskiego */
-    converted_palette[6] = 0xFF7777;   /* Jaśniejszy czerwony z więcej zielonego i niebieskiego */
-    converted_palette[7] = 0xFFBBBB;   /* Bardzo jasny czerwony */
-    converted_palette[8] = 0x331100;   /* Ciemny brązowy */
-    converted_palette[9] = 0x661100;   /* Brązowy */
-    converted_palette[10] = 0x991100;  /* Jaśniejszy brązowy */
-    converted_palette[11] = 0xCC2200;  /* Ciemny pomarańczowy */
-    converted_palette[12] = 0xFF2200;  /* Pomarańczowy */
-    converted_palette[13] = 0xFF6644;  /* Jaśniejszy pomarańczowy */
-    converted_palette[14] = 0xFF9988;  /* Jasny łososiowy */
-    converted_palette[15] = 0xFFCCCC;  /* Bardzo jasny różowy (prawie biały z odcieniem czerwieni) */
-
-
-    /* Convert full palette for reference in HAM algorithm */
-    for (int i = 16; i < 256; i++) {
-        UBYTE r = pal[i].peRed;
-        UBYTE g = pal[i].peGreen;
-        UBYTE b = pal[i].peBlue;
-
-        /* Convert to 24-bit color */
-       converted_palette[i] = (r << 16) | (g << 8) | b;
-    }
-    #if 0
-        /* Normal 8-bit palette setup */
-    for (int i = 0; i < 256; i++) {
-        converted_palette[i] = (0xFF << 24) | (pal[i].peRed << 16) | (pal[i].peGreen << 8) | pal[i].peBlue;
-    }
-    #endif
-    if (last_screen_src != NULL) {
-        present_screen_ham6(last_screen_src);
-    }
+    set_palette_ham6_normal(pal);
 }
 
 extern bool loading_palette;
@@ -1100,7 +1281,8 @@ static void present_screen32(br_pixelmap* src) {
         0, 0,
         src->width * 4,
         rp,
-        0, 0,
+        is_public_window ? amiga_window->BorderLeft : 0,
+        is_public_window ? amiga_window->BorderTop : 0,
         src->width,
         src->height,
         RECTFMT_ARGB
@@ -1172,10 +1354,28 @@ static int get_mouse_buttons(int* pButton1, int* pButton2) {
 static int get_mouse_position(int* pX, int* pY) {
     int lX = amiga_MouseX;
     int lY = amiga_MouseY;
+    int input_width = render_width;
+    int input_height = render_height;
+
+    if (is_public_window && amiga_window) {
+        lX -= amiga_window->BorderLeft;
+        lY -= amiga_window->BorderTop;
+        input_width = amiga_window->Width
+            - amiga_window->BorderLeft - amiga_window->BorderRight;
+        input_height = amiga_window->Height
+            - amiga_window->BorderTop - amiga_window->BorderBottom;
+    }
 
 #if defined(DETHRACE_FIX_BUGS)
-    lX = (lX * 320) / render_width;
-    lY = (lY * 200) / render_height;
+    /* Menus temporarily switch gGraf_spec_index to low resolution even when
+     * the actual display remains 640x480.  PDGetMousePosition performs the
+     * real-to-menu conversion later, so return coordinates in the permanent
+     * display resolution here to avoid scaling them twice. */
+    const int game_width = gReal_graf_data_index ? 640 : 320;
+    const int game_height = gReal_graf_data_index ? 480 : 200;
+
+    lX = (lX * game_width) / input_width;
+    lY = (lY * game_height) / input_height;
 #endif
 
     *pX = lX;
@@ -1186,14 +1386,41 @@ static int get_mouse_position(int* pX, int* pY) {
 static void destroy_window(void) {
     bool was_opengl_mode = is_opengl_mode;
 
+    /* Palette callbacks are allowed to redisplay the most recent frame.
+     * Resolution changes destroy that pixelmap immediately after this call,
+     * so never carry its address into the newly-created display. */
+    last_screen_src = NULL;
+
     if (ham_buffer) {
         FreeVec(ham_buffer);
         ham_buffer = NULL;
     }
+    if (ham_fade_buffer) {
+        FreeVec(ham_fade_buffer);
+        ham_fade_buffer = NULL;
+    }
+    if (ham_source_buffer) {
+        FreeVec(ham_source_buffer);
+        ham_source_buffer = NULL;
+    }
+    ham_buffer_capacity = 0;
+    ham_source_frame_valid = 0;
+    ham_reference_palette_valid = 0;
+    ham_encoded_frame_valid = 0;
+    ham_fade_degree = 256;
+    ham_cached_width = 0;
+    ham_cached_height = 0;
 
-    if (is_opengl_mode && mini_CurrentContext) {
+    if (is_opengl_mode) {
+#ifdef DETHRACE_AMIGA_SHARED_MINIGL
         mglDeleteContext();
-        mini_CurrentContext = NULL;
+        MiniGLClose();
+#else
+        if (mini_CurrentContext) {
+            mglDeleteContext();
+            mini_CurrentContext = NULL;
+        }
+#endif
         is_opengl_mode = 0;
         amiga_window = NULL;
         amiga_screen = NULL;
@@ -1208,16 +1435,28 @@ static void destroy_window(void) {
         FreeVec(blank_pointer);
         blank_pointer = NULL;
     }
-    if (amiga_screen)
+    if (amiga_screen && owns_amiga_screen)
         CloseScreen(amiga_screen);
-    if (screen_buffers[0])
+    amiga_screen = NULL;
+    rp = NULL;
+    cm = NULL;
+    owns_amiga_screen = 0;
+    is_public_window = 0;
+    if (screen_buffers[0]) {
         FreeVec(screen_buffers[0]);
-    if (screen_buffers[1])
+        screen_buffers[0] = NULL;
+    }
+    if (screen_buffers[1]) {
         FreeVec(screen_buffers[1]);
-    if (CyberGfxBase && !was_opengl_mode)
+        screen_buffers[1] = NULL;
+    }
+    if (CyberGfxBase && !was_opengl_mode) {
         CloseLibrary(CyberGfxBase);
-    if (TimerBase)
-        CloseLibrary(TimerBase);
+        CyberGfxBase = NULL;
+    }
+    /* TimerBase belongs to timer.device, not to a library.  Closing it with
+     * CloseLibrary() corrupts Exec state.  The process-wide timer device is
+     * intentionally retained until process exit. */
 }
 
 
@@ -1226,14 +1465,30 @@ static void set_key_handler(void (*handler_func)(void)) {
 }
 
 static void create_window(const char* title, int width, int height, tHarness_window_type window_type) {
+    /* A new renderer must not inherit a cached frame from the previous
+     * resolution/window. */
+    last_screen_src = NULL;
+    ham_encoded_frame_valid = 0;
+    ham_cached_width = 0;
+    ham_cached_height = 0;
+
     if (window_type == eWindow_type_opengl) {
         (void)title;
+#ifdef DETHRACE_AMIGA_SHARED_MINIGL
+        if (!MiniGLOpen()) {
+            printf("ERROR: unable to open minigl.library v4\n");
+            exit(1);
+        }
+#endif
         mglChooseWindowMode(harness_game_config.start_full_screen ? GL_FALSE : GL_TRUE);
         mglChooseNumberOfBuffers(2);
         mglChoosePixelDepth(16);
         mglChooseVertexBufferSize(4096);
         if (!mglCreateContext(0, 0, width, height)) {
             printf("ERROR: unable to create MiniGL context\n");
+#ifdef DETHRACE_AMIGA_SHARED_MINIGL
+            MiniGLClose();
+#endif
             exit(1);
         }
         /* Do not quantize the game to fractions of the host refresh rate.
@@ -1315,6 +1570,11 @@ static int Amiga_Harness_Platform_Init(tHarness_platform* platform) {
         is_ham_mode = 1;
         gPalette_impl = set_palette_ham6;
         platform->Renderer_Present = present_screen_ham6;
+    } else if (!harness_game_config.start_full_screen && !is_aga_mode) {
+        /* A public screen owns its palette, so draw converted ARGB pixels
+         * instead of changing the Workbench palette. */
+        gPalette_impl = set_palette32;
+        platform->Renderer_Present = present_screen32;
     } else if (depth == 8) {
         gPalette_impl = set_palette8;
         platform->Renderer_Present = present_screen8;

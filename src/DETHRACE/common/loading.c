@@ -3550,7 +3550,8 @@ FILE* DRfopen(char* pFilename, char* pMode) {
 // FUNCTION: CARM95 0x00426cc5
 int GetCDPathFromPathsTxtFile(char* pPath_name) {
 #ifdef AMIGA
-    strcpy(pPath_name, "PROGDIR:");
+    /* Stay inside the game directory selected with --dir. */
+    strcpy(pPath_name, ".");
     return 1;
 #else
     // GLOBAL: CARM95 0x50a5e4

@@ -661,11 +661,22 @@ void PDSetFileVariables(void) {
 void PDBuildAppPath(char* pThe_path) {
     int pos;
 
+#ifdef AMIGA
+    /*
+     * Harness_DetectAndSetWorkingDirectory() has already changed to the
+     * directory selected with --dir.  Keep game paths relative to that
+     * directory: absolute paths reconstructed by getcwd() are not reliable
+     * for all AmigaDOS filesystems and make --dir ineffective.
+     */
+    pThe_path[0] = '\0';
+    strcpy(gNetwork_profile_fname, "NETWORK.INI");
+#else
     getcwd(pThe_path, 256);
     // strcat(pThe_path, "\\");
     strcat(pThe_path, "/");
     strcpy(gNetwork_profile_fname, pThe_path);
     strcat(gNetwork_profile_fname, "NETWORK.INI");
+#endif
 }
 
 // IDA: void __usercall PDForEveryFile(char *pThe_path@<EAX>, void (*pAction_routine)(char*)@<EDX>)

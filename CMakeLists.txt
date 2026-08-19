@@ -45,6 +45,41 @@ option(DETHRACE_PLATFORM_SDL1 "Support SDL 1.2 platform driver" OFF)
 option(DETHRACE_PLATFORM_SDL2 "Support SDL 2 platform driver" ON)
 option(DETHRACE_PLATFORM_SDL3 "Support SDL 3 platform driver" OFF)
 option(DETHRACE_PLATFORM_AMIGA "Support native AmigaOS platform driver" OFF)
+option(DETHRACE_AMIGA_SHARED_MINIGL "Use the shared minigl.library ABI on AmigaOS" OFF)
+set(DETHRACE_AMIGA_MINIGL_Q3_ROOT "/mnt/d/dev/Amiga_SDK/minigl-q3" CACHE PATH
+    "Path containing the static Q3 MiniGL include/ and lib/ directories")
+set(DETHRACE_AMIGA_SHARED_MINIGL_ROOT "/mnt/d/dev/Amiga_SDK/minigl-shared" CACHE PATH
+    "Path containing the shared MiniGL include/ and lib/ directories")
+
+if(DETHRACE_AMIGA_SHARED_MINIGL)
+    if(NOT DETHRACE_PLATFORM_AMIGA)
+        message(FATAL_ERROR "DETHRACE_AMIGA_SHARED_MINIGL requires DETHRACE_PLATFORM_AMIGA")
+    endif()
+    if(NOT EXISTS "${DETHRACE_AMIGA_SHARED_MINIGL_ROOT}/include/proto/minigl.h")
+        message(FATAL_ERROR "Shared MiniGL headers not found under ${DETHRACE_AMIGA_SHARED_MINIGL_ROOT}/include")
+    endif()
+    if(EXISTS "${DETHRACE_AMIGA_SHARED_MINIGL_ROOT}/lib/libminigl_dispatch.a")
+        set(DETHRACE_AMIGA_SHARED_MINIGL_DISPATCH ON)
+        set(DETHRACE_AMIGA_SHARED_MINIGL_IMPORT_LIBRARY
+            "${DETHRACE_AMIGA_SHARED_MINIGL_ROOT}/lib/libminigl_dispatch.a")
+        message(STATUS "Shared MiniGL ABI: v10 dispatch table")
+    elseif(EXISTS "${DETHRACE_AMIGA_SHARED_MINIGL_ROOT}/lib/libminigl_register.a")
+        set(DETHRACE_AMIGA_SHARED_MINIGL_DISPATCH OFF)
+        set(DETHRACE_AMIGA_SHARED_MINIGL_IMPORT_LIBRARY
+            "${DETHRACE_AMIGA_SHARED_MINIGL_ROOT}/lib/libminigl_register.a")
+        message(STATUS "Shared MiniGL ABI: v9 register LVO")
+    else()
+        message(FATAL_ERROR
+            "Shared MiniGL import library not found under ${DETHRACE_AMIGA_SHARED_MINIGL_ROOT}/lib")
+    endif()
+elseif(DETHRACE_PLATFORM_AMIGA)
+    if(NOT EXISTS "${DETHRACE_AMIGA_MINIGL_Q3_ROOT}/include/mgl/gl.h")
+        message(FATAL_ERROR "Static Q3 MiniGL headers not found under ${DETHRACE_AMIGA_MINIGL_Q3_ROOT}/include")
+    endif()
+    if(NOT EXISTS "${DETHRACE_AMIGA_MINIGL_Q3_ROOT}/lib/libmgl-q3.a")
+        message(FATAL_ERROR "libmgl-q3.a not found under ${DETHRACE_AMIGA_MINIGL_Q3_ROOT}/lib")
+    endif()
+endif()
 
 option(MSVC_42_FOR_RECCMP "Build with MSVC 4.2 to match assembly" OFF)
 

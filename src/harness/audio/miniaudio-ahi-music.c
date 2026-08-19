@@ -75,6 +75,20 @@ typedef struct tMiniaudio_stream {
 
 static tMiniaudio_sample* music_sample = NULL;
 
+static bool UseCarmageddonMusic(void) {
+    return harness_game_info.mode == eGame_splatpack
+        || harness_game_info.mode == eGame_splatpack_demo
+        || harness_game_info.mode == eGame_splatpack_xmas_demo;
+}
+
+static void MakeMusicTrackPath(char* path, int track) {
+    /* AmigaDOS uses a leading slash to address the parent directory.
+     * Splat Pack is launched from CARSPLAT, next to CARMA. */
+    sprintf(path, UseCarmageddonMusic()
+        ? "/CARMA/MUSIC/Track%02d.pcm"
+        : "MUSIC/Track%02d.pcm", track);
+}
+
 #define MAX_CHANNELS (32)
 enum {CHANNEL_STOPPED, CHANNEL_STARTED, CHANNEL_PLAYING, CHANNEL_LOOPING};
 
@@ -448,6 +462,20 @@ tAudioBackend_error_code AudioBackend_StopSample(void* type_struct_sample) {
 }
 
 tAudioBackend_error_code AudioBackend_InitCDA(void) {
+    char trackname[256];
+    BPTR music_file;
+
+    /* A file-based install does not need the optional physical-CD helper.
+     * Avoid making AmigaDOS search every LIBS: assign component for a library
+     * which will not be used anyway. */
+    MakeMusicTrackPath(trackname, 2);
+    music_file = Open((STRPTR)trackname, MODE_OLDFILE);
+    if (music_file) {
+        Close(music_file);
+        CD_Active = FALSE;
+        return eAB_success;
+    }
+
     // Jednostka urządzenia
     // Open cdplayer.library
     if ((CDPlayerBase = OpenLibrary(CDPLAYERNAME, CDPLAYERVERSION)) == NULL) {
@@ -529,17 +557,13 @@ tAudioBackend_error_code AudioBackend_PlayCDA(int track) {
     if (!CD_Active) {
         // Załaduj plik surowy PCM
         char trackname[256];
-        sprintf(trackname, "CARMA:Music/Track%02d.pcm", track);
+        MakeMusicTrackPath(trackname, track);
 
         // Otwórz plik
         BPTR file = Open(trackname, MODE_OLDFILE);
         if (!file) {
-            sprintf(trackname, "Music/Track%02d.pcm", track);
-            BPTR file = Open(trackname, MODE_OLDFILE);
-            if (!file) {
             LOG_WARN("Failed to open %s\n", trackname);
             return eAB_error;
-            }
         }
 
         // Pobierz rozmiar pliku
