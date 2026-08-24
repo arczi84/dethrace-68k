@@ -30,6 +30,7 @@
  * game sources. */
 extern void FXA_ClearHudPixelAt(void* pixel);
 extern void FXA_MarkHudPixelAt(void* pixel);
+extern void FXA_MarkHudMaskedSpan(void* pixels, const tU8* source, int count);
 #endif
 #include <stdio.h>
 #include <string.h>
@@ -1181,7 +1182,9 @@ void Copy8BitTo16BitRectangle(br_pixelmap* pDst, tS16 pDst_x, tS16 pDst_y, br_pi
     int x;
     int y;
     tU8* src_start;
+    tU8* src_row;
     tU16* dst_start;
+    tU16* dst_row;
     tU16* palette_entry;
 
     if (pSrc_x < 0) {
@@ -1225,6 +1228,8 @@ void Copy8BitTo16BitRectangle(br_pixelmap* pDst, tS16 pDst_x, tS16 pDst_y, br_pi
         src_start += pSrc_x;
         dst_start = (tU16*)((tU8*)pDst->pixels + (pDst->row_bytes * (pDst_y + y)));
         dst_start += pDst_x;
+        src_row = src_start;
+        dst_row = dst_start;
         for (x = 0; x < pWidth; x++) {
             // even though we have a specific `WithTransparency` version of this function, this one also handles transparency!
             if (*src_start != 0) {
@@ -1233,6 +1238,9 @@ void Copy8BitTo16BitRectangle(br_pixelmap* pDst, tS16 pDst_x, tS16 pDst_y, br_pi
             src_start++;
             dst_start++;
         }
+#ifdef AMIGA
+        FXA_MarkHudMaskedSpan(dst_row, src_row, pWidth);
+#endif
     }
 }
 
@@ -1241,7 +1249,9 @@ void Copy8BitTo16BitRectangleWithTransparency(br_pixelmap* pDst, tS16 pDst_x, tS
     int x;
     int y;
     tU8* src_start;
+    tU8* src_row;
     tU16* dst_start;
+    tU16* dst_row;
     tU16* palette_entry;
 
     if (pSrc_x < 0) {
@@ -1284,21 +1294,18 @@ void Copy8BitTo16BitRectangleWithTransparency(br_pixelmap* pDst, tS16 pDst_x, tS
         src_start = (tU8*)pSrc->pixels + (pSrc->row_bytes * (pSrc_y + y)) + pSrc_x;
         dst_start = (tU16*)((tU8*)pDst->pixels + (pDst->row_bytes * (pDst_y + y)));
         dst_start += pDst_x;
+        src_row = src_start;
+        dst_row = dst_start;
         for (x = 0; x < pWidth; x++) {
             if (*src_start != 0) {
                 *dst_start = palette_entry[*src_start];
-#ifdef AMIGA
-                /* Claim the pixel for this frame straight away.  The overlay
-                 * mask is only updated at grLfbEnd(), i.e. after the whole
-                 * blit, so without marking it here an overlapping later blit
-                 * (the speedometer digits over its dial) would see an unmarked
-                 * pixel and punch a hole through what this blit just drew. */
-                FXA_MarkHudPixelAt(dst_start);
-#endif
             }
             src_start++;
             dst_start++;
         }
+#ifdef AMIGA
+        FXA_MarkHudMaskedSpan(dst_row, src_row, pWidth);
+#endif
     }
 }
 
@@ -1307,7 +1314,9 @@ void Copy8BitToOnscreen16BitRectangleWithTransparency(br_pixelmap* pDst, tS16 pD
     int x;
     int y;
     tU8* src_start;
+    tU8* src_row;
     tU16* dst_start;
+    tU16* dst_row;
     tU16* palette_entry;
 
     palette_entry = PaletteOf16Bits(pPalette)->pixels;
@@ -1315,21 +1324,18 @@ void Copy8BitToOnscreen16BitRectangleWithTransparency(br_pixelmap* pDst, tS16 pD
         src_start = (tU8*)pSrc->pixels + (pSrc->row_bytes * (pSrc_y + y)) + pSrc_x;
         dst_start = (tU16*)((tU8*)pDst->pixels + (pDst->row_bytes * (pDst_y + y)));
         dst_start += pDst_x;
+        src_row = src_start;
+        dst_row = dst_start;
         for (x = 0; x < pWidth; x++) {
             if (*src_start != 0) {
                 *dst_start = palette_entry[*src_start];
-#ifdef AMIGA
-                /* Claim the pixel for this frame straight away.  The overlay
-                 * mask is only updated at grLfbEnd(), i.e. after the whole
-                 * blit, so without marking it here an overlapping later blit
-                 * (the speedometer digits over its dial) would see an unmarked
-                 * pixel and punch a hole through what this blit just drew. */
-                FXA_MarkHudPixelAt(dst_start);
-#endif
             }
             src_start++;
             dst_start++;
         }
+#ifdef AMIGA
+        FXA_MarkHudMaskedSpan(dst_row, src_row, pWidth);
+#endif
     }
 }
 
@@ -1338,7 +1344,9 @@ void Copy8BitRectangleTo16BitRhombusWithTransparency(br_pixelmap* pDst, tS16 pDs
     int x;
     int y;
     tU8* src_start;
+    tU8* src_row;
     tU16* dst_start;
+    tU16* dst_row;
     tU16* palette_entry;
     tX1616 total_shear;
     tS16 sheared_x;
@@ -1391,6 +1399,8 @@ void Copy8BitRectangleTo16BitRhombusWithTransparency(br_pixelmap* pDst, tS16 pDs
             if (clipped_width > 0) {
                 src_start = ((tU8*)pSrc->pixels) + (y + pSrc_y + pSrc->origin_y) * pSrc->row_bytes + clipped_src_x;
                 dst_start = (tU16*)((tU8*)pDst->pixels + 2 * sheared_x + (y + pDst_y + pDst->origin_y) * pDst->row_bytes);
+                src_row = src_start;
+                dst_row = dst_start;
 
                 for (x = clipped_width; x > 0; x--) {
                     if (*src_start) {
@@ -1399,6 +1409,9 @@ void Copy8BitRectangleTo16BitRhombusWithTransparency(br_pixelmap* pDst, tS16 pDs
                     src_start++;
                     dst_start++;
                 }
+#ifdef AMIGA
+                FXA_MarkHudMaskedSpan(dst_row, src_row, clipped_width);
+#endif
             }
             total_shear += pShear;
         }

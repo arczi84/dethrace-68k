@@ -39,6 +39,11 @@
 
 #include <math.h>
 
+#ifdef AMIGA
+extern void FXA_BeginWorldFrame(void);
+extern void FXA_DrawLfbBackground(void);
+#endif
+
 // GLOBAL: CARM95 0x00520040
 int gPalette_munged;
 
@@ -1872,6 +1877,7 @@ void RenderAFrame(int pDepth_mask_on) {
     int map_timer_x;
     int map_timer_width;
     int ped_type;
+    int defer_map_background = 0;
     char* old_pixels;
     br_matrix34 old_camera_matrix;
     br_matrix34 old_mirror_cam_matrix;
@@ -1921,16 +1927,27 @@ void RenderAFrame(int pDepth_mask_on) {
         // Added by dethrace
         // 3d scene is drawn on top of the 2d map, so we must ensure that all the 2d pixel
         // writes have been flushed to the framebuffer first
+#ifdef AMIGA
+        if (gBack_screen->type == BR_PMT_RGB_565) {
+            /* The small map viewport is cleared below by
+             * ConditionallyFillWithSky().  Defer the opaque LFB upload until
+             * after that clear, otherwise it is captured as a late HUD
+             * rectangle and flashes over the rendered map geometry. */
+            defer_map_background = 1;
+        }
+#endif
         BrPixelmapFlush(gBack_screen);
 #endif
 
-        DimRectangle(
-            gBack_screen,
-            gMap_render_x_i - gCurrent_graf_data->map_render_x_marg,
-            gMap_render_y_i - gCurrent_graf_data->map_render_y_marg,
-            gMap_render_x_i + gMap_render_width_i + gCurrent_graf_data->map_render_x_marg,
-            gMap_render_y_i + gMap_render_height_i + gCurrent_graf_data->map_render_y_marg,
-            1);
+        if (!defer_map_background) {
+            DimRectangle(
+                gBack_screen,
+                gMap_render_x_i - gCurrent_graf_data->map_render_x_marg,
+                gMap_render_y_i - gCurrent_graf_data->map_render_y_marg,
+                gMap_render_x_i + gMap_render_width_i + gCurrent_graf_data->map_render_x_marg,
+                gMap_render_y_i + gMap_render_height_i + gCurrent_graf_data->map_render_y_marg,
+                1);
+        }
     }
     if (!gAction_replay_mode) {
         CalculateWobblitude(the_time);
@@ -2017,6 +2034,23 @@ void RenderAFrame(int pDepth_mask_on) {
     }
 
 #ifdef DETHRACE_3DFX_PATCH
+#ifdef AMIGA
+    if (defer_map_background) {
+        FXA_DrawLfbBackground();
+        DimRectangle(
+            gBack_screen,
+            gMap_render_x_i - gCurrent_graf_data->map_render_x_marg,
+            gMap_render_y_i - gCurrent_graf_data->map_render_y_marg,
+            gMap_render_x_i + gMap_render_width_i + gCurrent_graf_data->map_render_x_marg,
+            gMap_render_y_i + gMap_render_height_i + gCurrent_graf_data->map_render_y_marg,
+            1);
+    }
+#endif
+#ifdef AMIGA
+    if (gBack_screen->type == BR_PMT_RGB_565) {
+        FXA_BeginWorldFrame();
+    }
+#endif
     PDUnlockRealBackScreen(1);
 #endif
 

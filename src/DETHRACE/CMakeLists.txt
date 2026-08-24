@@ -218,6 +218,10 @@ endif()
 target_link_libraries(dethrace PRIVATE dethrace_obj compile_with_werror)
 target_sources(dethrace PRIVATE main.c)
 
+if(DETHRACE_PLATFORM_AMIGA)
+    set_target_properties(dethrace PROPERTIES OUTPUT_NAME "dethrace_opt")
+endif()
+
 if(DETHRACE_IDE_ROOT_DIR)
     set_target_properties(dethrace PROPERTIES
         VS_DEBUGGER_ENVIRONMENT "DETHRACE_ROOT_DIR=${DETHRACE_IDE_ROOT_DIR}"
