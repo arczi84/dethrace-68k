@@ -48,11 +48,20 @@ sh tools/build-renderfix.sh
 ```
 
 Prerequisites: CMake 3.20+, make, the Amiga GCC 6.5.0b toolchain, and the Amiga
-support SDK. The support path must contain include/ and lib/ with
-c2p1x1_4_c5_bm.o, c2p1x1_8_c5_bm_040.o and c2p1x1_6_c5_bm_040.o. These external
-SDK objects are not game assets and are not bundled here. The minimal MiniGL
-client SDK and its import archive are in tools/pistorm3d-v12-sdk; the game uses
-an installed compatible minigl.library at runtime.
+support headers (including Warp3D/Warp3D.h, plus AmigaOS, AHI and CyberGraphX
+headers if these are not already in the toolchain). AMIGA_SUPPORT_PATH points
+to the directory containing those extra include/ files; it no longer needs
+C2P objects in lib/.
+
+The three tested C2P objects are bundled in tools/c2p/lib and used by default.
+Their public-domain assembly sources and rebuild instructions are in
+[tools/c2p](../tools/c2p/README.md). Vasm is needed only to rebuild these objects,
+not for a normal game build. To use a different C2P directory, set
+AMIGA_C2P_PATH when running the build script or pass -DAMIGA_C2P_PATH to CMake.
+
+The minimal MiniGL client SDK and its import archive are in
+tools/pistorm3d-v12-sdk; the game uses an installed compatible minigl.library at
+runtime.
 
 The output is dethrace_opt in the build directory. Install it as dethrace in
 your existing game directory. The script does not deploy automatically.

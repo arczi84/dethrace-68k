@@ -14,7 +14,17 @@ set_property(CACHE M68K_FPU PROPERTY STRINGS ${M68K_FPU_TYPES})
 set(M68K_TOOLCHAIN_PATH "/opt/amiga-debian" CACHE PATH
     "Path to the bebbo Amiga GCC 6.5.0b 241006 toolchain")
 set(AMIGA_SUPPORT_PATH "/mnt/d/dev/Amiga_SDK/common" CACHE PATH
-    "Path containing the Amiga support headers and C2P objects")
+    "Path containing optional Amiga support include/ and lib/ directories")
+
+# Keep the tested C2P objects in the checkout rather than a developer's SDK.
+set(AMIGA_C2P_PATH "${CMAKE_CURRENT_LIST_DIR}/../../tools/c2p/lib" CACHE PATH
+    "Path containing the three Amiga chunky-to-planar objects")
+foreach(_c2p_name c2p1x1_4_c5_bm c2p1x1_8_c5_bm_040 c2p1x1_6_c5_bm_040)
+    if(NOT EXISTS "${AMIGA_C2P_PATH}/${_c2p_name}.o")
+        message(FATAL_ERROR
+            "Missing C2P object: ${AMIGA_C2P_PATH}/${_c2p_name}.o. Restore tools/c2p/lib, run tools/c2p/build.sh, or set AMIGA_C2P_PATH.")
+    endif()
+endforeach()
 
 set(CMAKE_SYSROOT "${M68K_TOOLCHAIN_PATH}")
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
@@ -51,7 +61,7 @@ set(CMAKE_CXX_FLAGS
     "${CMAKE_CXX_FLAGS} ${AMIGA_COMMON_FLAGS} -D__stdargs= -std=c++11")
 
 set(CMAKE_EXE_LINKER_FLAGS
-    "${CMAKE_EXE_LINKER_FLAGS} ${AMIGA_PROFILE_FLAGS} -L${AMIGA_SUPPORT_PATH}/lib ${AMIGA_SUPPORT_PATH}/lib/c2p1x1_4_c5_bm.o ${AMIGA_SUPPORT_PATH}/lib/c2p1x1_8_c5_bm_040.o ${AMIGA_SUPPORT_PATH}/lib/c2p1x1_6_c5_bm_040.o -lm -noixemul ${AMIGA_FINAL_STRIP_FLAG}")
+    "${CMAKE_EXE_LINKER_FLAGS} ${AMIGA_PROFILE_FLAGS} -L${AMIGA_SUPPORT_PATH}/lib ${AMIGA_C2P_PATH}/c2p1x1_4_c5_bm.o ${AMIGA_C2P_PATH}/c2p1x1_8_c5_bm_040.o ${AMIGA_C2P_PATH}/c2p1x1_6_c5_bm_040.o -lm -noixemul ${AMIGA_FINAL_STRIP_FLAG}")
 set(CMAKE_EXE_LINKER_FLAGS_DEBUG
     "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -lm -DDEBUG -ldebug")
 set(CMAKE_CXX_FLAGS_DEBUG "-DDEBUG")

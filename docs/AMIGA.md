@@ -9,12 +9,18 @@ The port was brought forward from the older working SDL 1.2-era Amiga port. The 
 - bebbo Amiga GCC 6.5.0b toolchain; the tested default is `/opt/amiga-debian`
 - CMake 3.23 or newer
 - AmigaOS and AHI headers
-- the following chunky-to-planar objects:
+- the following chunky-to-planar objects (now bundled in `tools/c2p/lib`):
   - `c2p1x1_4_c5_bm.o`
   - `c2p1x1_6_c5_bm_040.o`
   - `c2p1x1_8_c5_bm_040.o`
 
-The toolchain file defaults to `/mnt/d/amiga-gcc2` for the support headers, libraries and C2P objects. Both paths are CMake cache variables and can be overridden.
+The toolchain uses the bundled C2P objects by default. See
+[tools/c2p](../tools/c2p/README.md) for their sources and optional rebuild.
+`AMIGA_C2P_PATH` overrides their directory independently of `AMIGA_SUPPORT_PATH`,
+which supplies extra SDK headers and libraries. For the current MiniGL R10
+build, use the [R10 build instructions](AMIGA_RENDERFIX.md) and compiler flags in
+[BUILD_BASELINE.md](../BUILD_BASELINE.md); the rest of this document describes
+the earlier native port.
 
 ## Building
 
