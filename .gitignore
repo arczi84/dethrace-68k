@@ -7,3 +7,9 @@ reccmp-report*
 /tools/launcher/DethraceLauncher
 /tools/launcher/DethraceLauncherDemo
 /tools/launcher/*.map
+
+# Local renderer session notes and diagnostic artifacts
+/ACTIVE_BUILD.txt
+/core
+/core.*
+/tools/pistorm3d-v12-sdk/client/*.o

@@ -17,6 +17,11 @@
 #include "utility.h"
 #include <stdlib.h>
 
+#ifdef AMIGA
+extern void FXA_BeginOverlay(void);
+extern void FXA_EndOverlay(void);
+#endif
+
 // GLOBAL: CARM95 0x00521678
 int gLast_fancy_index;
 
@@ -310,7 +315,13 @@ void DeviouslyDimRectangle(br_pixelmap* pPixelmap, int pLeft, int pTop, int pRig
 #else
     PDUnlockRealBackScreen(1);
 #endif
+    #ifdef AMIGA
+    FXA_BeginOverlay();
+#endif
     BrZbSceneRender(g2d_camera, g2d_camera, gBack_screen, gDepth_buffer);
+#ifdef AMIGA
+    FXA_EndOverlay();
+#endif
 #ifdef AMIGA
     PDResumeRealBackScreen();
 #else

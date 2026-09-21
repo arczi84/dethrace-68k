@@ -1464,6 +1464,59 @@ static void set_key_handler(void (*handler_func)(void)) {
     gKeyHandler_func = handler_func;
 }
 
+/* Classic MiniGL presents a CPU/RTG bitmap with ClipBlit. A host Warp3D GL
+ * clear need not initialise that separate storage. Clear it through the public
+ * lock API before the first presentation and before the shim's first capture.
+ * The fallback geometry matches the RGB565 context requested below; classic
+ * Warp3D can report zero geometry even with a valid drawmem/bprow. */
+static void clear_initial_native_back_buffer(int width, int height) {
+    MGLLockInfo info;
+    int row, bytes_per_pixel, rows;
+    size_t row_bytes, pitch;
+    memset(&info, 0, sizeof(info));
+    if (!mglLockBack(&info)) {
+        printf("[MiniGL] startup bitmap: no native lock\n");
+        return;
+    }
+    if (info.base_address != NULL && width > 0 && height > 0) {
+        if (info.width > 0 && info.width < width) width = info.width;
+        rows = height;
+        if (info.height > 0 && info.height < rows) rows = info.height;
+        bytes_per_pixel = info.depth == 0 ? 2 :
+            (info.depth > 24 ? 4 : info.depth > 16 ? 3 : info.depth > 8 ? 2 : 1);
+        row_bytes = (size_t)width * bytes_per_pixel;
+        pitch = info.pitch > 0 ? (size_t)info.pitch : row_bytes;
+        if (row_bytes > pitch) row_bytes = pitch;
+        for (row = 0; row < rows; row++)
+            memset((unsigned char *)info.base_address + (size_t)row * pitch, 0, row_bytes);
+        printf("[MiniGL] startup bitmap: cleared %lu bytes x %d rows, pitch %lu\n",
+            (unsigned long)row_bytes, rows, (unsigned long)pitch);
+    } else {
+        printf("[MiniGL] startup bitmap: no native address\n");
+    }
+    mglUnlockDisplay();
+}
+
+/* Context creation only: no waits or bitmap writes on the per-frame path. */
+extern int FXA_IsPiStorm3DRenderer(void);
+static void clear_initial_gl_buffers(int width, int height) {
+    if (FXA_IsPiStorm3DRenderer())
+        return;
+    glDisable(GL_SCISSOR_TEST);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glDepthMask(GL_TRUE);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClearDepth(1.0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    /* Classic MiniGL's glFlush is empty; wait before touching its bitmap. */
+    glFinish();
+    clear_initial_native_back_buffer(width, height);
+    mglSwitchDisplay();
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glFinish();
+    clear_initial_native_back_buffer(width, height);
+}
+
 static void create_window(const char* title, int width, int height, tHarness_window_type window_type) {
     /* A new renderer must not inherit a cached frame from the previous
      * resolution/window. */
@@ -1474,11 +1527,20 @@ static void create_window(const char* title, int width, int height, tHarness_win
 
     if (window_type == eWindow_type_opengl) {
         (void)title;
+        if (harness_game_config.output_width > 0 && harness_game_config.output_height > 0) {
+            width = harness_game_config.output_width;
+            height = harness_game_config.output_height;
+        }
 #ifdef DETHRACE_AMIGA_SHARED_MINIGL
         if (!MiniGLOpen()) {
             printf("ERROR: unable to open minigl.library v4\n");
             exit(1);
         }
+#endif
+#ifdef DETHRACE_AMIGA_SHARED_MINIGL
+        printf("[MiniGL] library %u.%u: %s\n", (unsigned)MiniGLBase->lib_Version,
+            (unsigned)MiniGLBase->lib_Revision,
+            MiniGLBase->lib_IdString != NULL ? (const char *)MiniGLBase->lib_IdString : "(no ID)");
 #endif
         mglChooseWindowMode(harness_game_config.start_full_screen ? GL_FALSE : GL_TRUE);
         mglChooseNumberOfBuffers(2);
@@ -1494,6 +1556,7 @@ static void create_window(const char* title, int width, int height, tHarness_win
         /* Do not quantize the game to fractions of the host refresh rate.
          * This renderer is benchmarked independently from display VSync. */
         mglEnableSync(GL_FALSE);
+        clear_initial_gl_buffers(width, height);
         is_opengl_mode = 1;
         render_width = width;
         render_height = height;

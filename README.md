@@ -1,3 +1,6 @@
+> Amiga MiniGL/PiStorm3D R10 snapshot: see [build and validation notes](docs/AMIGA_RENDERFIX.md)
+> and [compiler baseline](BUILD_BASELINE.md). Clone with `--recurse-submodules`.
+
 # Dethrace
 
 [![Workflow](https://github.com/dethrace-labs/dethrace/actions/workflows/workflow.yaml/badge.svg)](https://github.com/dethrace-labs/dethrace/actions/workflows/workflow.yml)

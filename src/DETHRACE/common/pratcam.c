@@ -17,6 +17,11 @@
 #include "utility.h"
 #include <stdlib.h>
 
+#ifdef AMIGA
+extern void FXA_BeginOverlay(void);
+extern void FXA_EndOverlay(void);
+#endif
+
 // GLOBAL: CARM95 0x0050f064
 tS3_sound_tag gWhirr_noise = 0;
 
@@ -566,7 +571,13 @@ void DoPratcam(tU32 pThe_time) {
         gPrat_buffer->map = gRender_palette;
         BrMapAdd(gPrat_buffer);
         BrMaterialUpdate(gPrat_material, BR_MATU_ALL);
-        BrZbSceneRender(g2d_camera, g2d_camera, gBack_screen, gDepth_buffer);
+        #ifdef AMIGA
+    FXA_BeginOverlay();
+#endif
+    BrZbSceneRender(g2d_camera, g2d_camera, gBack_screen, gDepth_buffer);
+#ifdef AMIGA
+    FXA_EndOverlay();
+#endif
         BrMapRemove(gPrat_buffer);
         gPrat_actor->render_style = BR_RSTYLE_NONE;
     } else {

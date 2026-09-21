@@ -1,3 +1,6 @@
+#ifdef AMIGA
+extern int FXA_GalleryCommitBackground(void);
+#endif
 #include "racesumm.h"
 #include "brender.h"
 #include "crush.h"
@@ -950,7 +953,11 @@ void DamageScrnDraw(int pCurrent_choice, int pCurrent_mode) {
         rows = gCurrent_graf_data->wreck_render_h * 0.0666666f;
         columns = (double)gCurrent_graf_data->wreck_render_w * 0.0666666f;
 
+#ifdef AMIGA
+        BrPixelmapRectangleFill(gBack_screen, gCurrent_graf_data->wreck_render_x, gCurrent_graf_data->wreck_render_y, gCurrent_graf_data->wreck_render_w, gCurrent_graf_data->wreck_render_h, 0xB0B0);
+#else
         BrPixelmapRectangleFill(gBack_screen, gCurrent_graf_data->wreck_render_x, gCurrent_graf_data->wreck_render_y, gCurrent_graf_data->wreck_render_w, gCurrent_graf_data->wreck_render_h, 0xB0B0B0B0);
+#endif
 
         for (v = 0; v <= rows; v++) {
             BrPixelmapLine(
@@ -998,6 +1005,9 @@ void DamageScrnDraw(int pCurrent_choice, int pCurrent_mode) {
         // 3d scene is drawn on top of the 2d hud, so we must ensure that all the 2d pixel
         // writes have been flushed to the framebuffer first
         BrPixelmapFlush(gReal_back_screen);
+#ifdef AMIGA
+        FXA_GalleryCommitBackground();
+#endif
         // -
 
         BrZbSceneRenderBegin(gUniverse_actor, gWreck_camera, gWreck_render_area, gWreck_z_buffer);

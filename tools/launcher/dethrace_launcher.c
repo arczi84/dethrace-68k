@@ -126,7 +126,11 @@ static STRPTR game_names[] = {
     (STRPTR)"Splat Demo", NULL
 };
 static STRPTR renderer_names[] = { (STRPTR)"Software", (STRPTR)"MiniGL", NULL };
-static STRPTR resolution_names[] = { (STRPTR)"320x200", (STRPTR)"640x480", NULL };
+static STRPTR resolution_names[] = {
+    (STRPTR)"320x200", (STRPTR)"640x480", (STRPTR)"800x600",
+    (STRPTR)"1024x768", (STRPTR)"1280x720", (STRPTR)"1280x1024",
+    (STRPTR)"1366x768", (STRPTR)"1600x900", (STRPTR)"1920x1080", NULL
+};
 static STRPTR display_names[] = {
     (STRPTR)"CyberGraphX 8-bit", (STRPTR)"AGA", (STRPTR)"HAM6", (STRPTR)"Wybierz...", NULL
 };
@@ -239,7 +243,7 @@ static void load_config(void)
 
     cfg.game = clamp_int(cfg.game, 0, 3);
     cfg.renderer = clamp_int(cfg.renderer, 0, 1);
-    cfg.resolution = clamp_int(cfg.resolution, 0, 1);
+    cfg.resolution = clamp_int(cfg.resolution, 0, 8);
     cfg.display = clamp_int(cfg.display, 0, 3);
     cfg.fps = clamp_int(cfg.fps, 0, 4);
     cfg.show_fps = !!cfg.show_fps;
@@ -424,11 +428,13 @@ static void update_renderer_controls(void)
                       GA_Disabled, renderer_disabled,
                       TAG_DONE);
 
-    resolution_disabled = game == 2 || renderer == 1 || display == 2;
-    /* Demo and HAM6 are always 320x200; MiniGL is always 640x480. */
+    resolution_disabled = game == 2 || display == 2;
+    /* The original demo and HAM6 remain fixed at 320x200.  MiniGL accepts
+     * the extended RTG modes, using the 640x480 game assets as its layout. */
     if (game == 2) resolution = 0;
-    else if (renderer == 1) resolution = 1;
     else if (display == 2) resolution = 0;
+    else if (renderer == 1 && resolution == 0) resolution = 1;
+    else if (renderer == 0 && resolution > 1) resolution = 1;
 
     GT_SetGadgetAttrs(gadgets[GID_RESOLUTION], win, NULL,
                       GTCY_Active, resolution,
@@ -648,7 +654,8 @@ int main(int argc, char **argv)
             if (msg_class == IDCMP_CLOSEWINDOW) {
                 running = 0;
             } else if (msg_class == IDCMP_GADGETUP) {
-                if (gid == GID_GAME || gid == GID_RENDERER || gid == GID_DISPLAY) {
+                if (gid == GID_GAME || gid == GID_RENDERER || gid == GID_RESOLUTION
+                    || gid == GID_DISPLAY) {
                     update_renderer_controls();
                 } else if (gid == GID_SAVE) {
                     read_gadgets();

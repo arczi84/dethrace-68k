@@ -136,6 +136,11 @@ static int Harness_ClampInt(int value, int minimum, int maximum) {
 
 static int Harness_ProcessLauncherConfigFile(const char* argv0) {
     static const int fps_values[] = { 0, 25, 30, 50, 60 };
+    static const int resolution_sizes[][2] = {
+        { 320, 200 }, { 640, 480 }, { 800, 600 }, { 1024, 768 },
+        { 1280, 720 }, { 1280, 1024 }, { 1366, 768 }, { 1600, 900 },
+        { 1920, 1080 }
+    };
     char config_path[MAX_PATH];
     char game_path[MAX_PATH];
     char line[128];
@@ -218,7 +223,7 @@ static int Harness_ProcessLauncherConfigFile(const char* argv0) {
 
     game = Harness_ClampInt(game, 0, 3);
     renderer = !!renderer;
-    resolution = !!resolution;
+    resolution = Harness_ClampInt(resolution, 0, 8);
     display = Harness_ClampInt(display, 0, 3);
     fps = Harness_ClampInt(fps, 0, 4);
 
@@ -239,7 +244,12 @@ static int Harness_ProcessLauncherConfigFile(const char* argv0) {
     harness_game_config.opengl_3dfx_mode = renderer;
     /* The original Carmageddon demo has no DATA/64X48X8 set.  The old
      * launcher omitted -hires for this exact combination. */
-    gGraf_spec_index = game == 2 && !renderer ? 0 : resolution;
+    gGraf_spec_index = game == 2 && !renderer ? 0 : resolution != 0;
+    if (renderer) {
+        if (resolution == 0) resolution = 1;
+        harness_game_config.output_width = resolution_sizes[resolution][0];
+        harness_game_config.output_height = resolution_sizes[resolution][1];
+    }
     harness_game_config.bpp = display == 2 ? 6 : 8;
     harness_game_config.aga_screen = display == 1;
     harness_game_config.custom_screen = display == 3;
@@ -477,7 +487,7 @@ void Harness_DetectAndSetWorkingDirectory(char* argv0) {
 
 int Harness_Init(int* argc, char* argv[]) {
 
-    printf("Dethrace version: %s\n", DETHRACE_VERSION);
+    printf("Dethrace version: %s | built: %s %s\n", DETHRACE_VERSION, __DATE__, __TIME__);
 
     memset(&harness_game_info, 0, sizeof(harness_game_info));
 
@@ -519,6 +529,8 @@ int Harness_Init(int* argc, char* argv[]) {
     harness_game_config.bpp = 8;
     harness_game_config.aga_screen = 0;
     harness_game_config.custom_screen = 0;
+    harness_game_config.output_width = 0;
+    harness_game_config.output_height = 0;
     safe_strcpy(harness_game_config.cd_device, "scsi.device");
     harness_game_config.cd_unit = 0;
 

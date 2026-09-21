@@ -64,6 +64,10 @@ typedef struct tHarness_game_config {
     int bpp;
     int aga_screen;
     int custom_screen;
+    /* Physical MiniGL output mode.  The game UI/data layout remains the
+     * original 640x480 high-resolution mode. */
+    int output_width;
+    int output_height;
 
     int install_signalhandler;
     int no_bind;

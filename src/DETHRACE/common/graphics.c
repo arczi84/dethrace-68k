@@ -42,6 +42,9 @@
 #ifdef AMIGA
 extern void FXA_BeginWorldFrame(void);
 extern void FXA_DrawLfbBackground(void);
+extern void FXA_MarkHudOpaqueSpan(void* pixels, int count);
+extern void FXA_BeginShadow(float near_adjustment);
+extern void FXA_EndShadow(void);
 #endif
 
 // GLOBAL: CARM95 0x00520040
@@ -605,6 +608,11 @@ void CopyWords(char* pDst, char* pSrc, int pN) {
     dst = (tU16*)pDst;
     src = (tU16*)pSrc;
     BrMemCpy(dst, src, pN);
+#ifdef AMIGA
+    /* Strip-image skips carry transparency; copied runs are opaque, including
+     * black pixels. Re-publish them even when their RAM values are unchanged. */
+    FXA_MarkHudOpaqueSpan(dst, pN / sizeof(*dst));
+#endif
 }
 
 // IDA: void __usercall Copy8BitStripImageTo16Bit(br_pixelmap *pDest@<EAX>, br_int_16 pDest_x@<EDX>, br_int_16 pOffset_x@<EBX>, br_int_16 pDest_y@<ECX>, br_int_16 pOffset_y, tS8 *pSource, br_int_16 pSource_x, br_int_16 pSource_y, br_uint_16 pWidth, br_uint_16 pHeight)
@@ -1683,6 +1691,9 @@ void ProcessShadow(tCar_spec* pCar, br_actor* pWorld, tTrack_spec* pTrack_spec, 
 #ifdef DETHRACE_3DFX_PATCH
             DisableLights();
 #endif
+#ifdef AMIGA
+            FXA_BeginShadow(camera_hither_fudge);
+#endif
             BrZbSceneRenderBegin(gUniverse_actor, gCamera, gRender_screen, gDepth_buffer);
 #ifdef DETHRACE_3DFX_PATCH
             EnableLights();
@@ -1708,6 +1719,9 @@ void ProcessShadow(tCar_spec* pCar, br_actor* pWorld, tTrack_spec* pTrack_spec, 
                 }
             }
             BrZbSceneRenderEnd();
+#ifdef AMIGA
+            FXA_EndShadow();
+#endif
         }
         camera_ptr->hither_z -= camera_hither_fudge;
         for (i = 0; i < f_num; i++) {

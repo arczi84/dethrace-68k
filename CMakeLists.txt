@@ -46,6 +46,10 @@ option(DETHRACE_PLATFORM_SDL2 "Support SDL 2 platform driver" ON)
 option(DETHRACE_PLATFORM_SDL3 "Support SDL 3 platform driver" OFF)
 option(DETHRACE_PLATFORM_AMIGA "Support native AmigaOS platform driver" OFF)
 option(DETHRACE_AMIGA_SHARED_MINIGL "Use the shared minigl.library ABI on AmigaOS" OFF)
+option(DETHRACE_BUILD_BRENDER_PERSPECTIVE_TEST
+    "Build the standalone BRender/3dfx/MiniGL perspective diagnostic" OFF)
+option(DETHRACE_BUILD_MINIGL_ALPHA_SPRITE_TEST
+    "Build the standalone MiniGL alpha-tested sprite diagnostic" OFF)
 set(DETHRACE_AMIGA_MINIGL_Q3_ROOT "/mnt/d/dev/Amiga_SDK/minigl-q3" CACHE PATH
     "Path containing the static Q3 MiniGL include/ and lib/ directories")
 set(DETHRACE_AMIGA_SHARED_MINIGL_ROOT "/mnt/d/dev/Amiga_SDK/minigl-shared" CACHE PATH
@@ -198,6 +202,14 @@ add_subdirectory(src/harness)
 add_subdirectory(src/S3)
 add_subdirectory(src/smackw32)
 add_subdirectory(src/DETHRACE)
+
+if(DETHRACE_BUILD_BRENDER_PERSPECTIVE_TEST)
+    add_subdirectory(tools/brender-perspective-test)
+endif()
+
+if(DETHRACE_BUILD_MINIGL_ALPHA_SPRITE_TEST)
+    add_subdirectory(tools/minigl-alpha-sprite-test)
+endif()
 
 if(DETHRACE_WERROR)
     if(MSVC)
