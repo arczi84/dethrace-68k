@@ -6,6 +6,12 @@ endif()
 
 project(dethrace C)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "AmigaOS")
+    # CMake's generic platform defaults to libdl. The native Amiga backend
+    # uses OpenLibrary and BRender's Amiga HostImage stubs, not POSIX dlopen.
+    set(CMAKE_DL_LIBS "")
+endif()
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/")
 
 if(MSVC)

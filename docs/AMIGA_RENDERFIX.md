@@ -24,6 +24,10 @@ BRender submodule. It is based on the q3batch renderer, with the existing
 
 A clean cross-build of this publication snapshot passed with Amiga GCC 6.5.0b.
 Both host blade regression checks below passed from the same checkout.
+The C2P packaging fix was also built from a fresh recursive clone, with an
+external support directory containing only headers (no C2P objects or libdl).
+Reassembling the bundled C2P sources reproduced all three objects byte for byte;
+removing the unused libdl link did not change the resulting executable bytes.
 
 The user confirmed the cockpit, shadow and blade fixes. The blade queue also
 passed host ASan/UBSan tests and a Mesa EGL visibility test using the real
@@ -52,6 +56,7 @@ support headers (including Warp3D/Warp3D.h, plus AmigaOS, AHI and CyberGraphX
 headers if these are not already in the toolchain). AMIGA_SUPPORT_PATH points
 to the directory containing those extra include/ files; it no longer needs
 C2P objects in lib/.
+The native Amiga build does not use POSIX libdl and no longer links libdl.a.
 
 The three tested C2P objects are bundled in tools/c2p/lib and used by default.
 Their public-domain assembly sources and rebuild instructions are in
