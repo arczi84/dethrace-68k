@@ -66,7 +66,10 @@ struct Library *CyberGfxBase = NULL;
 extern struct Library *CyberGfxBase;
 #endif
 static struct timeval basetime;
-struct Library *TimerBase;
+/* struct Device, to match the NDK 3.2 proto/timer.h (extern struct Device
+ * *TimerBase) of the WSL amiga-gcc toolchain; older NDKs declared it as
+ * struct Library *. It holds tr_node.io_Device either way. */
+struct Device *TimerBase;
 
 static struct RastPort TempRP;
 struct ScreenModeRequester *sm;
@@ -255,6 +258,15 @@ static void get_and_handle_message(void) {
                 break;
             case IDCMP_RAWKEY:
                 rawKey = code & ~IECODE_UP_PREFIX;
+                /* Help (0x5F), which the game does not use: switch the Glide
+                 * shim's optimizations off and on for same-session A/B tests. */
+                if (rawKey == 0x5F) {
+                    if (!(code & IECODE_UP_PREFIX)) {
+                        extern void FXA_ToggleOptimizations(void);
+                        FXA_ToggleOptimizations();
+                    }
+                    break;
+                }
                 //printf("Raw key: %ld\n", rawKey);
                 dinput_key = amigaRawKeyToDirectInputKeyNum[rawKey];
                 //printf("DirectInput key: %d\n", dinput_key);
@@ -1552,6 +1564,12 @@ static void create_window(const char* title, int width, int height, tHarness_win
             MiniGLClose();
 #endif
             exit(1);
+        }
+        {
+            /* The Glide shim keeps some GL state set across draws (client
+             * arrays, an uploaded texture); a new context starts without it. */
+            extern void FXA_GLContextCreated(void);
+            FXA_GLContextCreated();
         }
         /* Do not quantize the game to fractions of the host refresh rate.
          * This renderer is benchmarked independently from display VSync. */

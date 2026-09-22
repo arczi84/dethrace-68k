@@ -22,6 +22,18 @@ extern void FXA_BeginOverlay(void);
 extern void FXA_EndOverlay(void);
 #endif
 
+/* Measurement build only (-DFXA_SHIM_STATS): counters printed per frame by the
+ * Glide shim's shimstats.log. The indices into fxa_ext_stats[] are fixed across
+ * every file that counts into it. */
+#define FXA_EXT_FLIC_FRAMES_DECODED 9
+#define FXA_EXT_DOPRATCAM_CALLS 10
+#ifdef FXA_SHIM_STATS
+extern unsigned long fxa_ext_stats[];
+#define FXA_EXT_COUNT(id) (fxa_ext_stats[id]++)
+#else
+#define FXA_EXT_COUNT(id) ((void)0)
+#endif
+
 // GLOBAL: CARM95 0x0050f064
 tS3_sound_tag gWhirr_noise = 0;
 
@@ -478,6 +490,7 @@ void DoPratcam(tU32 pThe_time) {
     br_pixelmap* right_image;
     br_pixelmap* left_image;
 
+    FXA_EXT_COUNT(FXA_EXT_DOPRATCAM_CALLS);
     if (gAusterity_mode) {
         return;
     }
@@ -543,6 +556,7 @@ void DoPratcam(tU32 pThe_time) {
             }
         }
 #endif
+        FXA_EXT_COUNT(FXA_EXT_FLIC_FRAMES_DECODED);
         if (PlayNextFlicFrame(&gPrat_flic)) {
             NextPratcamChunk();
             break;

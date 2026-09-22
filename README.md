@@ -1,5 +1,6 @@
 > Amiga MiniGL/PiStorm3D R10 snapshot: see [build and validation notes](docs/AMIGA_RENDERFIX.md)
 > and [compiler baseline](BUILD_BASELINE.md). Clone with `--recurse-submodules`.
+> This branch also includes [Hedeon's optimizations and comparison switches](docs/AMIGA_HEDEON.md).
 
 # Dethrace
 

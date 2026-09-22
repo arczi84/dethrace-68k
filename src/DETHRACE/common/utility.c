@@ -31,7 +31,27 @@
 extern void FXA_ClearHudPixelAt(void* pixel);
 extern void FXA_MarkHudPixelAt(void* pixel);
 extern void FXA_MarkHudMaskedSpan(void* pixels, const tU8* source, int count);
+extern int FXA_HudOverlayRow(void* dst_row, int count, unsigned short** ov, unsigned char** mk);
+
+/* Value the Glide shim stores in its HUD overlay mask for a pixel drawn during
+ * the current frame (FXA_HUD_MASK_THIS_FRAME in glide_shim.c). */
+#define FXA_HUD_MASK_THIS_FRAME 2
 #endif
+
+/* Measurement build only (-DFXA_SHIM_STATS): counters printed per frame by the
+ * Glide shim's shimstats.log. The indices into fxa_ext_stats[] are fixed across
+ * every file that counts into it. */
+#define FXA_EXT_MF_ROWS_FUSED 4
+#define FXA_EXT_MF_ROWS_FALLBACK 5
+#define FXA_EXT_MF_PIXELS_FUSED 6
+#define FXA_EXT_MF_MISMATCHES 7
+#ifdef FXA_SHIM_STATS
+extern unsigned long fxa_ext_stats[];
+#define FXA_EXT_COUNT(id) (fxa_ext_stats[id]++)
+#else
+#define FXA_EXT_COUNT(id) ((void)0)
+#endif
+
 #include <stdio.h>
 #include <string.h>
 
@@ -1177,6 +1197,62 @@ void Copy8BitTo16Bit(br_pixelmap* pDst, br_pixelmap* pSrc, br_pixelmap* pPalette
     }
 }
 
+#ifdef AMIGA
+/* One row of a masked 8-bit to 16-bit blit, with the row's opaque pixels
+ * published to the HUD overlay in the same pass. It does the work of the plain
+ * row loop followed by FXA_MarkHudMaskedSpan(): each non-zero source texel
+ * stores its palette entry into the back buffer and into the overlay colour at
+ * the same offset, and sets the overlay mask; transparent texels are left alone
+ * in all three buffers. FXA_HudOverlayRow() hands out the overlay pointers only
+ * when the markfuse switch is on and the whole row lies inside the LFB, which
+ * are exactly the rows FXA_MarkHudMaskedSpan() would mark in full. Otherwise
+ * this returns 0 without writing anything, and the caller runs the plain loop
+ * and FXA_MarkHudMaskedSpan() instead. */
+static inline int CopyMaskedRowToHudOverlay(tU16* dst, const tU8* src, int count, const tU16* palette_entry) {
+    unsigned short* row_colour;
+    unsigned char* row_mask;
+    unsigned short* overlay_colour;
+    unsigned char* overlay_mask;
+    tU16 value;
+    tU8 texel;
+    int x;
+
+    if (count <= 0 || FXA_HudOverlayRow(dst, count, &row_colour, &row_mask) != count) {
+        FXA_EXT_COUNT(FXA_EXT_MF_ROWS_FALLBACK);
+        return 0;
+    }
+    // row_colour and row_mask escape to FXA_HudOverlayRow(), so every store in
+    // the loop could change them as far as the compiler knows; these copies
+    // never have their address taken and need no reload after a store.
+    overlay_colour = row_colour;
+    overlay_mask = row_mask;
+    for (x = 0; x < count; x++) {
+        texel = src[x];
+        if (texel != 0) {
+            value = palette_entry[texel];
+            dst[x] = value;
+            overlay_colour[x] = value;
+            overlay_mask[x] = FXA_HUD_MASK_THIS_FRAME;
+        }
+    }
+#ifdef FXA_SHIM_STATS
+    /* Verifier: every opaque texel must leave the overlay holding the back
+     * buffer's pixel (what FXA_MarkHudMaskedSpan() copies) and the mask set. */
+    fxa_ext_stats[FXA_EXT_MF_ROWS_FUSED]++;
+    fxa_ext_stats[FXA_EXT_MF_PIXELS_FUSED] += count;
+    for (x = 0; x < count; x++) {
+        if (src[x] != 0
+            && (dst[x] != palette_entry[src[x]]
+                || overlay_colour[x] != dst[x]
+                || overlay_mask[x] != FXA_HUD_MASK_THIS_FRAME)) {
+            fxa_ext_stats[FXA_EXT_MF_MISMATCHES]++;
+        }
+    }
+#endif
+    return 1;
+}
+#endif
+
 // IDA: void __usercall Copy8BitTo16BitRectangle(br_pixelmap *pDst@<EAX>, tS16 pDst_x@<EDX>, tS16 pDst_y@<EBX>, br_pixelmap *pSrc@<ECX>, tS16 pSrc_x, tS16 pSrc_y, tS16 pWidth, tS16 pHeight, br_pixelmap *pPalette)
 void Copy8BitTo16BitRectangle(br_pixelmap* pDst, tS16 pDst_x, tS16 pDst_y, br_pixelmap* pSrc, tS16 pSrc_x, tS16 pSrc_y, tS16 pWidth, tS16 pHeight, br_pixelmap* pPalette) {
     int x;
@@ -1230,17 +1306,22 @@ void Copy8BitTo16BitRectangle(br_pixelmap* pDst, tS16 pDst_x, tS16 pDst_y, br_pi
         dst_start += pDst_x;
         src_row = src_start;
         dst_row = dst_start;
-        for (x = 0; x < pWidth; x++) {
-            // even though we have a specific `WithTransparency` version of this function, this one also handles transparency!
-            if (*src_start != 0) {
-                *dst_start = palette_entry[*src_start];
-            }
-            src_start++;
-            dst_start++;
-        }
 #ifdef AMIGA
-        FXA_MarkHudMaskedSpan(dst_row, src_row, pWidth);
+        if (!CopyMaskedRowToHudOverlay(dst_row, src_row, pWidth, palette_entry))
 #endif
+        {
+            for (x = 0; x < pWidth; x++) {
+                // even though we have a specific `WithTransparency` version of this function, this one also handles transparency!
+                if (*src_start != 0) {
+                    *dst_start = palette_entry[*src_start];
+                }
+                src_start++;
+                dst_start++;
+            }
+#ifdef AMIGA
+            FXA_MarkHudMaskedSpan(dst_row, src_row, pWidth);
+#endif
+        }
     }
 }
 
@@ -1296,16 +1377,21 @@ void Copy8BitTo16BitRectangleWithTransparency(br_pixelmap* pDst, tS16 pDst_x, tS
         dst_start += pDst_x;
         src_row = src_start;
         dst_row = dst_start;
-        for (x = 0; x < pWidth; x++) {
-            if (*src_start != 0) {
-                *dst_start = palette_entry[*src_start];
-            }
-            src_start++;
-            dst_start++;
-        }
 #ifdef AMIGA
-        FXA_MarkHudMaskedSpan(dst_row, src_row, pWidth);
+        if (!CopyMaskedRowToHudOverlay(dst_row, src_row, pWidth, palette_entry))
 #endif
+        {
+            for (x = 0; x < pWidth; x++) {
+                if (*src_start != 0) {
+                    *dst_start = palette_entry[*src_start];
+                }
+                src_start++;
+                dst_start++;
+            }
+#ifdef AMIGA
+            FXA_MarkHudMaskedSpan(dst_row, src_row, pWidth);
+#endif
+        }
     }
 }
 
@@ -1326,16 +1412,21 @@ void Copy8BitToOnscreen16BitRectangleWithTransparency(br_pixelmap* pDst, tS16 pD
         dst_start += pDst_x;
         src_row = src_start;
         dst_row = dst_start;
-        for (x = 0; x < pWidth; x++) {
-            if (*src_start != 0) {
-                *dst_start = palette_entry[*src_start];
-            }
-            src_start++;
-            dst_start++;
-        }
 #ifdef AMIGA
-        FXA_MarkHudMaskedSpan(dst_row, src_row, pWidth);
+        if (!CopyMaskedRowToHudOverlay(dst_row, src_row, pWidth, palette_entry))
 #endif
+        {
+            for (x = 0; x < pWidth; x++) {
+                if (*src_start != 0) {
+                    *dst_start = palette_entry[*src_start];
+                }
+                src_start++;
+                dst_start++;
+            }
+#ifdef AMIGA
+            FXA_MarkHudMaskedSpan(dst_row, src_row, pWidth);
+#endif
+        }
     }
 }
 
@@ -1402,16 +1493,21 @@ void Copy8BitRectangleTo16BitRhombusWithTransparency(br_pixelmap* pDst, tS16 pDs
                 src_row = src_start;
                 dst_row = dst_start;
 
-                for (x = clipped_width; x > 0; x--) {
-                    if (*src_start) {
-                        *dst_start = palette_entry[*src_start];
-                    }
-                    src_start++;
-                    dst_start++;
-                }
 #ifdef AMIGA
-                FXA_MarkHudMaskedSpan(dst_row, src_row, clipped_width);
+                if (!CopyMaskedRowToHudOverlay(dst_row, src_row, clipped_width, palette_entry))
 #endif
+                {
+                    for (x = clipped_width; x > 0; x--) {
+                        if (*src_start) {
+                            *dst_start = palette_entry[*src_start];
+                        }
+                        src_start++;
+                        dst_start++;
+                    }
+#ifdef AMIGA
+                    FXA_MarkHudMaskedSpan(dst_row, src_row, clipped_width);
+#endif
+                }
             }
             total_shear += pShear;
         }

@@ -45,6 +45,16 @@ extern void FXA_DrawLfbBackground(void);
 extern void FXA_MarkHudOpaqueSpan(void* pixels, int count);
 extern void FXA_BeginShadow(float near_adjustment);
 extern void FXA_EndShadow(void);
+extern int FXA_OptDimQueue(void);
+#endif
+
+/* Measurement build only (-DFXA_SHIM_STATS): exclusive time zones, reported by
+ * the Glide shim's shimstats.log. Zone ids are fxa_zone_names[] in glide_shim.c. */
+#ifdef FXA_SHIM_STATS
+extern void FXA_Zone(int id);
+#define FXA_ZONE(id) FXA_Zone(id)
+#else
+#define FXA_ZONE(id) ((void)0)
 #endif
 
 // GLOBAL: CARM95 0x00520040
@@ -1901,6 +1911,7 @@ void RenderAFrame(int pDepth_mask_on) {
     char the_text[256];
     tCar_spec* car;
 
+    FXA_ZONE(5);
 #ifdef DETHRACE_3DFX_PATCH
     if (gVoodoo_rush_mode >= 1) {
         gRender_screen->pixels = gBack_screen->pixels;
@@ -1998,7 +2009,9 @@ void RenderAFrame(int pDepth_mask_on) {
     }
     gRender_screen->pixels = (char*)gRender_screen->pixels + x_shift + y_shift * gRender_screen->row_bytes;
     CalculateConcussion(the_time);
+    FXA_ZONE(6);
     BrPixelmapRectangleFill(gDepth_buffer, 0, 0, gRender_screen->width, gRender_screen->height, 0xFFFFFFFF);
+    FXA_ZONE(5);
     if (gRender_indent && !gMap_mode) {
         BrPixelmapRectangleFill(
             gBack_screen,
@@ -2075,7 +2088,9 @@ void RenderAFrame(int pDepth_mask_on) {
     for (i = 0; i < (gMap_mode && !gSmall_frames_are_slow ? 3 : 1); i++)
 #endif
     {
+        FXA_ZONE(7);
         RenderShadows(gUniverse_actor, &gProgram_state.track_spec, gCamera, &gCamera_to_world);
+        FXA_ZONE(8);
         BrZbSceneRenderBegin(gUniverse_actor, gCamera, gRender_screen, gDepth_buffer);
         ProcessNonTrackActors(gRender_screen, gDepth_buffer, gCamera, &gCamera_to_world, &old_camera_matrix);
         ProcessTrack(gUniverse_actor, &gProgram_state.track_spec, gCamera, &gCamera_to_world, 0);
@@ -2095,10 +2110,12 @@ void RenderAFrame(int pDepth_mask_on) {
 #ifdef DETHRACE_3DFX_PATCH
     PDLockRealBackScreen(1);
 #endif
+    FXA_ZONE(5);
 
     BrMatrix34Copy(&gCamera->t.t.mat, &old_camera_matrix);
 #ifdef DETHRACE_3DFX_PATCH
     if (cockpit_on) {
+        FXA_ZONE(9);
         PDUnlockRealBackScreen(1);
         PDLockRealBackScreen(1);
         CopyStripImage(
@@ -2112,10 +2129,12 @@ void RenderAFrame(int pDepth_mask_on) {
             0,
             gCurrent_graf_data->total_cock_width,
             gCurrent_graf_data->total_cock_height);
+        FXA_ZONE(5);
     }
 #endif
 
     if (gMirror_on__graphics) {
+        FXA_ZONE(10);
 #ifdef DETHRACE_3DFX_PATCH
         if (gVoodoo_rush_mode >= 1) {
             gRearview_screen->pixels = gBack_screen->pixels;
@@ -2168,6 +2187,7 @@ void RenderAFrame(int pDepth_mask_on) {
 #endif
         BrMatrix34Copy(&gRearview_camera->t.t.mat, &old_mirror_cam_matrix);
         gRendering_mirror = 0;
+        FXA_ZONE(5);
     }
     if (gMap_mode) {
         if (gNet_mode == eNet_mode_none) {
@@ -2288,9 +2308,20 @@ void RenderAFrame(int pDepth_mask_on) {
             }
         }
 #endif
+        FXA_ZONE(11);
+#ifdef AMIGA
+        // HUD dims are queued from here to the end of the HUD section and drawn
+        // in two overlay brackets: one before the pratcam, one at the end.
+        gDim_queue_active = FXA_OptDimQueue();
+#endif
         DimAFewBits();
         DoDamageScreen(the_time);
         if (!gAction_replay_mode || gAR_fudge_headups) {
+#ifdef AMIGA
+            // The queued dims come before the pratcam in GL draw order, and
+            // their back-screen resume must precede the pratcam's unlock.
+            DimQueueFlush();
+#endif
             // Added by dethrace
             // Pratcam is drawn on top of the 2d cockpit, so we must ensure that all the 2d pixel
             // writes have been flushed to the framebuffer first
@@ -2303,6 +2334,13 @@ void RenderAFrame(int pDepth_mask_on) {
         if (!gAction_replay_mode || gAR_fudge_headups) {
             DrawPowerups(the_time);
         }
+#ifdef AMIGA
+        // Draw the dims queued since the pratcam; every dim outside the HUD
+        // section (map mode, menus) draws immediately.
+        DimQueueFlush();
+        gDim_queue_active = 0;
+#endif
+        FXA_ZONE(5);
     }
     if (gNet_mode != eNet_mode_none) {
         DisplayUserMessage();
@@ -2317,7 +2355,9 @@ void RenderAFrame(int pDepth_mask_on) {
     }
     gRender_screen->pixels = old_pixels;
     if (!gPalette_fade_time || GetRaceTime() > gPalette_fade_time + 500) {
+        FXA_ZONE(12);
         PDScreenBufferSwap(0);
+        FXA_ZONE(5);
     }
     if (gAction_replay_mode) {
         DoActionReplayPostSwap();

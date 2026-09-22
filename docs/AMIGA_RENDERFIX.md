@@ -1,5 +1,8 @@
 # Amiga MiniGL / PiStorm3D render fixes (R10)
 
+The current branch also includes [Hedeon's optimizations](AMIGA_HEDEON.md),
+identified as `0.10.1-amiga-r10-hedeon1`. The build procedure below is unchanged.
+
 This branch publishes the current optimized Dethrace source and its matching
 BRender submodule. It is based on the q3batch renderer, with the existing
 1023-vertex immediate batches and HUD texture cache retained.

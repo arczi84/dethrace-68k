@@ -53,6 +53,14 @@ void DRPixelmapCleverText2(br_pixelmap* pPixelmap, int pX, int pY, tDR_font* pFo
 
 void DeviouslyDimRectangle(br_pixelmap* pPixelmap, int pLeft, int pTop, int pRight, int pBottom, int pKnock_out_corners);
 
+#ifdef AMIGA
+// Set during the HUD section of RenderAFrame: DeviouslyDimRectangle() then queues
+// its rectangle, and DimQueueFlush() draws the queued rectangles in call order.
+extern int gDim_queue_active;
+
+void DimQueueFlush(void);
+#endif
+
 void DimRectangle(br_pixelmap* pPixelmap, int pLeft, int pTop, int pRight, int pBottom, int pKnock_out_corners);
 
 void DimAFewBits(void);

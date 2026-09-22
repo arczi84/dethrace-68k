@@ -22,6 +22,19 @@ extern void FXA_BeginOverlay(void);
 extern void FXA_EndOverlay(void);
 #endif
 
+/* Measurement build only (-DFXA_SHIM_STATS): counters printed per frame by the
+ * Glide shim's shimstats.log. The indices into fxa_ext_stats[] are fixed across
+ * every file that counts into it. */
+#define FXA_EXT_DIM_QUEUED 0
+#define FXA_EXT_DIM_FLUSHES 1
+#define FXA_EXT_DIM_IMMEDIATE 2
+#ifdef FXA_SHIM_STATS
+extern unsigned long fxa_ext_stats[];
+#define FXA_EXT_COUNT(id) (fxa_ext_stats[id]++)
+#else
+#define FXA_EXT_COUNT(id) ((void)0)
+#endif
+
 // GLOBAL: CARM95 0x00521678
 int gLast_fancy_index;
 
@@ -292,6 +305,61 @@ void DRPixelmapCleverText2(br_pixelmap* pPixelmap, int pX, int pY, tDR_font* pFo
     }
 }
 
+#ifdef AMIGA
+/* HUD dim queue. While gDim_queue_active is set (only during the HUD section
+ * of RenderAFrame), DeviouslyDimRectangle() records its rectangle here instead
+ * of drawing it, and DimQueueFlush() later draws the recorded rectangles in call
+ * order. Each rectangle goes through the same model update and scene render as
+ * in DeviouslyDimRectangle(); the rectangles of one flush share a single
+ * back-screen suspend/resume and a single overlay bracket, so one batch close.
+ * The HUD section's other drawing is CPU writes into the LFB, composited at swap
+ * on top of all GL drawing, so drawing a dim later relative to them does not
+ * change a pixel. The flushes sit before the pratcam's unlock and at the end of
+ * the HUD section, so the GL draw order is unchanged. */
+#define DIM_QUEUE_LENGTH 32
+
+typedef struct tDim_queue_entry {
+    int left;
+    int top;
+    int right;
+    int bottom;
+} tDim_queue_entry;
+
+static tDim_queue_entry gDim_queue[DIM_QUEUE_LENGTH];
+static int gDim_queue_count;
+int gDim_queue_active;
+
+void DimQueueFlush(void) {
+    int i;
+    tDim_queue_entry* entry;
+
+    if (gDim_queue_count == 0) {
+        return;
+    }
+    FXA_EXT_COUNT(FXA_EXT_DIM_FLUSHES);
+    PDSuspendRealBackScreen();
+    FXA_BeginOverlay();
+    for (i = 0; i < gDim_queue_count; i++) {
+        entry = &gDim_queue[i];
+        gDim_model->vertices[1].p.v[0] = entry->left;
+        gDim_model->vertices[0].p.v[0] = entry->left;
+        gDim_model->vertices[3].p.v[0] = entry->right;
+        gDim_model->vertices[2].p.v[0] = entry->right;
+        gDim_model->vertices[3].p.v[1] = -entry->top;
+        gDim_model->vertices[0].p.v[1] = -entry->top;
+        gDim_model->vertices[2].p.v[1] = -entry->bottom;
+        gDim_model->vertices[1].p.v[1] = -entry->bottom;
+        BrModelUpdate(gDim_model, BR_MODU_VERTEX_POSITIONS);
+        gDim_actor->render_style = BR_RSTYLE_FACES;
+        BrZbSceneRender(g2d_camera, g2d_camera, gBack_screen, gDepth_buffer);
+        gDim_actor->render_style = BR_RSTYLE_NONE;
+    }
+    FXA_EndOverlay();
+    PDResumeRealBackScreen();
+    gDim_queue_count = 0;
+}
+#endif
+
 #ifdef DETHRACE_3DFX_PATCH
 // IDA: void __usercall DeviouslyDimRectangle(br_pixelmap *pPixelmap@<EAX>, int pLeft@<EDX>, int pTop@<EBX>, int pRight@<ECX>, int pBottom, int pKnock_out_corners)
 void DeviouslyDimRectangle(br_pixelmap* pPixelmap, int pLeft, int pTop, int pRight, int pBottom, int pKnock_out_corners) {
@@ -299,6 +367,22 @@ void DeviouslyDimRectangle(br_pixelmap* pPixelmap, int pLeft, int pTop, int pRig
     if (pPixelmap != gBack_screen) {
         FatalError(kFatalError_CanOnlyDimRectanglesOfgBack_screen);
     }
+
+#ifdef AMIGA
+    if (gDim_queue_active) {
+        if (gDim_queue_count == DIM_QUEUE_LENGTH) {
+            DimQueueFlush();
+        }
+        gDim_queue[gDim_queue_count].left = pLeft;
+        gDim_queue[gDim_queue_count].top = pTop;
+        gDim_queue[gDim_queue_count].right = pRight;
+        gDim_queue[gDim_queue_count].bottom = pBottom;
+        gDim_queue_count++;
+        FXA_EXT_COUNT(FXA_EXT_DIM_QUEUED);
+        return;
+    }
+    FXA_EXT_COUNT(FXA_EXT_DIM_IMMEDIATE);
+#endif
 
     gDim_model->vertices[1].p.v[0] = pLeft;
     gDim_model->vertices[0].p.v[0] = pLeft;

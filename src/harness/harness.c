@@ -707,6 +707,20 @@ int Harness_ProcessCommandLine(int* argc, char* argv[]) {
         } else if (strcasecmp(argv[i], "--aga") == 0) {
             harness_game_config.aga_screen = 1;
             consumed = 1;
+#ifdef AMIGA
+        } else if (strstr(argv[i], "--fxa-off=") != NULL) {
+            // Glide shim optimizations to switch off for this run, for A/B tests:
+            // any of the names FXA_SetOptimizationsOff prints (glide_shim.c), or all.
+            extern void FXA_SetOptimizationsOff(const char* names);
+            FXA_SetOptimizationsOff(strstr(argv[i], "=") + 1);
+            consumed = 1;
+        } else if (strstr(argv[i], "--fxa-ab=") != NULL) {
+            // The optimizations the Help key and the A/B build's automatic toggle
+            // switch off and on; every other one stays on. Default: all.
+            extern void FXA_SetAbMask(const char* names);
+            FXA_SetAbMask(strstr(argv[i], "=") + 1);
+            consumed = 1;
+#endif
         } else if (strcasecmp(argv[i], "--ask") == 0) {
             harness_game_config.custom_screen = 1;
             consumed = 1;

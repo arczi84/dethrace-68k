@@ -37,6 +37,15 @@
 #include "world.h"
 #include <stdlib.h>
 
+/* Measurement build only (-DFXA_SHIM_STATS): exclusive time zones, reported by
+ * the Glide shim's shimstats.log. Zone ids are fxa_zone_names[] in glide_shim.c. */
+#ifdef FXA_SHIM_STATS
+extern void FXA_Zone(int id);
+#define FXA_ZONE(id) FXA_Zone(id)
+#else
+#define FXA_ZONE(id) ((void)0)
+#endif
+
 // GLOBAL: CARM95 0x00514afc
 int gNasty_kludgey_cockpit_variable;
 
@@ -624,11 +633,14 @@ tRace_result MainGameLoop(void) {
             DoPowerupPeriodics(gFrame_period);
         }
         ResetLollipopQueue();
+        FXA_ZONE(1);
         if (!gAction_replay_mode) {
             MungeOpponents(gFrame_period);
             PollCarControls(gFrame_period);
         }
+        FXA_ZONE(0);
         PollCameraControls(camera_period);
+        FXA_ZONE(2);
         if (gAction_replay_mode) {
             DoActionReplay(gFrame_period);
         } else {
@@ -638,6 +650,7 @@ tRace_result MainGameLoop(void) {
             NetSendMessageStacks();
             CheckRecoveryOfCars(gFrame_period + gLast_tick_count - gRace_start);
         }
+        FXA_ZONE(0);
         if (!gNasty_kludgey_cockpit_variable) {
             gNasty_kludgey_cockpit_variable = 1;
             ToggleCockpit();
@@ -654,12 +667,16 @@ tRace_result MainGameLoop(void) {
             CheckCheckpoints();
         }
         ChangingView();
+        FXA_ZONE(3);
         MungeCarGraphics(gFrame_period);
+        FXA_ZONE(0);
         FunkThoseTronics();
         GrooveThoseDelics();
         DoWheelDamage(gFrame_period);
         CalculateFrameRate();
+        FXA_ZONE(4);
         MungePedestrians(gFrame_period);
+        FXA_ZONE(0);
         CameraBugFix(&gProgram_state.current_car, camera_period);
         if (!gAction_replay_mode) {
             MungeHeadups();
@@ -682,6 +699,7 @@ tRace_result MainGameLoop(void) {
             }
 #endif
             RenderAFrame(1);
+            FXA_ZONE(0);
         }
         CheckReplayTurnOn();
         if (!gRecover_car
