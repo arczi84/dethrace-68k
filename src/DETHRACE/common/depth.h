@@ -97,6 +97,9 @@ void SetYon(br_scalar pYon);
 
 br_scalar GetYon(void);
 
+// Camera/fog distance with the launcher multiplier; GetYon remains the menu value.
+br_scalar GetCameraYon(void);
+
 void IncreaseAngle(void);
 
 void DecreaseAngle(void);

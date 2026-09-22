@@ -68,6 +68,8 @@ typedef struct tHarness_game_config {
      * original 640x480 high-resolution mode. */
     int output_width;
     int output_height;
+    /* Separate from the original menu/savegame Yon value. */
+    float draw_distance_multiplier;
 
     int install_signalhandler;
     int no_bind;

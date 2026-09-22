@@ -8,6 +8,7 @@
 #include "globvrkm.h"
 #include "globvrpb.h"
 #include "harness/hooks.h"
+#include "harness/config.h"
 #include "harness/trace.h"
 #include "init.h"
 #include "pd/sys.h"
@@ -161,7 +162,7 @@ br_scalar CalculateWrappingMultiplier(br_scalar pValue, br_scalar pYon) {
 // IDA: br_scalar __usercall DepthCueingShiftToDistance@<ST0>(int pShift@<EAX>)
 br_scalar DepthCueingShiftToDistance(int pShift) {
 
-    return pow(10.0f, pShift * 0.1f) * gCamera_yon;
+    return pow(10.0f, pShift * 0.1f) * GetCameraYon();
 }
 
 // IDA: void __usercall FogAccordingToGPSCDE(br_material *pMaterial@<EAX>)
@@ -907,7 +908,10 @@ void AssertYons(void) {
 
     for (i = 0; i < COUNT_OF(gCamera_list); ++i) {
         camera_ptr = gCamera_list[i]->type_data;
-        camera_ptr->yon_z = gYon_multiplier * gCamera_yon;
+        camera_ptr->yon_z = gYon_multiplier * GetCameraYon();
+    }
+    if (harness_game_config.draw_distance_multiplier > 1.0f) {
+        SetSightDistance(gYon_multiplier * GetCameraYon());
     }
 }
 
@@ -954,13 +958,16 @@ void SetYon(br_scalar pYon) {
         pYon = 5.0f;
     }
 
+    gCamera_yon = pYon;
     for (i = 0; i < BR_ASIZE(gCamera_list); i++) {
         if (gCamera_list[i]) {
             camera_ptr = gCamera_list[i]->type_data;
-            camera_ptr->yon_z = pYon;
+            camera_ptr->yon_z = GetCameraYon();
         }
     }
-    gCamera_yon = pYon;
+    if (harness_game_config.draw_distance_multiplier > 1.0f) {
+        SetSightDistance(GetCameraYon());
+    }
 }
 
 // IDA: br_scalar __cdecl GetYon()
@@ -968,6 +975,15 @@ void SetYon(br_scalar pYon) {
 br_scalar GetYon(void) {
 
     return gCamera_yon;
+}
+
+br_scalar GetCameraYon(void) {
+    float multiplier = harness_game_config.draw_distance_multiplier;
+    // Zero-initialised configurations (including host tests) keep legacy behavior.
+    if (!(multiplier >= 1.0f && multiplier <= 3.0f)) {
+        multiplier = 1.0f;
+    }
+    return gCamera_yon * multiplier;
 }
 
 // IDA: void __cdecl IncreaseAngle()

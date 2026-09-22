@@ -104,7 +104,7 @@ void AllocateCamera(void) {
         camera_ptr->type = BR_CAMERA_PERSPECTIVE_FOV;
         camera_ptr->field_of_view = BrDegreeToAngle(gCamera_angle);
         camera_ptr->hither_z = gCamera_hither;
-        camera_ptr->yon_z = gCamera_yon;
+        camera_ptr->yon_z = GetCameraYon();
         camera_ptr->aspect = (double)gWidth / (double)gHeight;
     }
 
@@ -126,7 +126,7 @@ void AllocateCamera(void) {
     camera_ptr = (br_camera*)gRearview_camera->type_data;
     camera_ptr->hither_z = gCamera_hither;
     camera_ptr->type = BR_CAMERA_PERSPECTIVE_FOV;
-    camera_ptr->yon_z = gCamera_yon;
+    camera_ptr->yon_z = GetCameraYon();
     camera_ptr->field_of_view = BrDegreeToAngle(gCamera_angle);
     camera_ptr->aspect = (double)gWidth / (double)gHeight;
     gRearview_camera = BrActorAdd(gSelf, gRearview_camera);
@@ -164,7 +164,7 @@ void ReinitialiseForwardCamera(void) {
 
         gCamera->t.t.mat.m[2][1] = tandeg(d / 2.0) * w * 2.0 / (float)gRender_screen->height;
         camera_ptr->aspect = (float)gWidth / gHeight;
-        camera_ptr->yon_z = gYon_multiplier * gCamera_yon;
+        camera_ptr->yon_z = gYon_multiplier * GetCameraYon();
         if (gProgram_state.which_view == eView_left) {
             DRMatrix34PostRotateY(
                 &gCamera->t.t.mat,

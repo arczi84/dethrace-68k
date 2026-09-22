@@ -1,10 +1,13 @@
 # Hedeon optimizations: R10 integration
 
-Version: `0.10.1-amiga-r10-hedeon1`.
+Initial integration: `0.10.1-amiga-r10-hedeon1`. Version
+`0.10.1-amiga-r10-hedeon2` adds the launcher's independent draw-distance
+multiplier; see [launcher instructions](../tools/launcher/README.md).
 
 Imported from the Hedeon source snapshot supplied by the user on 2026-09-22
 (`dethrace-68k-amiga-renderfix-hedeon`). The eight game source files and eight
-BRender source files changed in that snapshot are preserved byte for byte.
+BRender source files changed in that snapshot were initially imported byte for
+byte. The later launcher integration also extends the harness configuration.
 The integration retains our bundled C2P objects, removal of the unused libdl
 dependency, build script and GCC baseline. The version label distinguishes
 this executable from the earlier R10 build. Credit for the imported

@@ -135,6 +135,7 @@ static int Harness_ClampInt(int value, int minimum, int maximum) {
 }
 
 static int Harness_ProcessLauncherConfigFile(const char* argv0) {
+    static const float draw_distance_values[] = { 1.0f, 1.5f, 2.0f, 3.0f };
     static const int fps_values[] = { 0, 25, 30, 50, 60 };
     static const int resolution_sizes[][2] = {
         { 320, 200 }, { 640, 480 }, { 800, 600 }, { 1024, 768 },
@@ -162,6 +163,7 @@ static int Harness_ProcessLauncherConfigFile(const char* argv0) {
     int lowmem = 0;
     int car_detail = 0;
     int sound_detail = 1;
+    int draw_distance = 0;
     char cd_device[64] = "scsi.device";
     int cd_unit = 0;
     char text_value[64];
@@ -217,6 +219,7 @@ static int Harness_ProcessLauncherConfigFile(const char* argv0) {
         else if (strcasecmp(key, "lowmem") == 0) lowmem = value;
         else if (strcasecmp(key, "car_detail") == 0) car_detail = value;
         else if (strcasecmp(key, "sound_detail") == 0) sound_detail = value;
+        else if (strcasecmp(key, "draw_distance") == 0) draw_distance = value;
         else if (strcasecmp(key, "cd_unit") == 0) cd_unit = value;
     }
     fclose(f);
@@ -253,6 +256,8 @@ static int Harness_ProcessLauncherConfigFile(const char* argv0) {
     harness_game_config.bpp = display == 2 ? 6 : 8;
     harness_game_config.aga_screen = display == 1;
     harness_game_config.custom_screen = display == 3;
+    harness_game_config.draw_distance_multiplier = draw_distance_values[Harness_ClampInt(draw_distance, 0, 3)];
+    LOG_INFO2("Draw distance multiplier: %f", harness_game_config.draw_distance_multiplier);
     harness_game_config.fps = fps_values[fps];
     harness_game_config.show_fps = !!show_fps;
     harness_game_config.start_full_screen = !windowed;
@@ -529,6 +534,7 @@ int Harness_Init(int* argc, char* argv[]) {
     harness_game_config.bpp = 8;
     harness_game_config.aga_screen = 0;
     harness_game_config.custom_screen = 0;
+    harness_game_config.draw_distance_multiplier = 1.0f;
     harness_game_config.output_width = 0;
     harness_game_config.output_height = 0;
     safe_strcpy(harness_game_config.cd_device, "scsi.device");

@@ -23,7 +23,7 @@
 
 #define CFG_FILE "dethrace-launcher.cfg"
 #define WIN_W 620
-#define WIN_H 368
+#define WIN_H 402
 #define LEFT_X 12
 #define RIGHT_X 315
 #define LABEL_W 142
@@ -40,6 +40,7 @@ enum {
     GID_SHOW_FPS,
     GID_CAR_DETAIL,
     GID_SOUND_DETAIL,
+    GID_DRAW_DISTANCE,
     GID_WINDOW,
     GID_SOUND,
     GID_SOUND_OPTIONS,
@@ -69,6 +70,7 @@ typedef struct LauncherConfig {
     int lowmem;
     int car_detail;
     int sound_detail;
+    int draw_distance;
     char cd_device[64];
     int cd_unit;
 } LauncherConfig;
@@ -83,6 +85,7 @@ typedef struct Lang {
     const char *show_fps;
     const char *car_detail;
     const char *sound_detail;
+    const char *draw_distance;
     const char *windowed;
     const char *sound;
     const char *sound_options;
@@ -101,7 +104,7 @@ static const Lang lang_pl = {
     "Dethrace - ustawienia",
     "Gra:",
     "Renderer:", "Rozdzielczosc:", "Ekran (software):", "Limit FPS:", "Pokaz FPS:",
-    "Detale aut:", "Detale dzwieku:",
+    "Detale aut:", "Detale dzwieku:", "Zasieg widzenia:",
     "W oknie:", "Dzwiek:", "Menu opcji dzwieku:",
     "Pomin filmy:", "Action Replay:", "Tryb malej pamieci:",
     "Urzadzenie CD:", "Unit CD:",
@@ -112,7 +115,7 @@ static const Lang lang_en = {
     "Dethrace - settings",
     "Game:",
     "Renderer:", "Resolution:", "Display (software):", "FPS limit:", "Show FPS:",
-    "Car detail:", "Sound detail:",
+    "Car detail:", "Sound detail:", "Draw distance:",
     "Windowed:", "Sound:", "Sound options menu:",
     "Skip cutscenes:", "Action Replay:", "Low-memory mode:",
     "CD device:", "CD unit:",
@@ -149,6 +152,9 @@ static STRPTR car_detail_names[] = {
 static STRPTR car_detail_names_en[] = {
     (STRPTR)"Highest", (STRPTR)"High", (STRPTR)"Medium", (STRPTR)"Low", (STRPTR)"Lowest", NULL
 };
+static STRPTR draw_distance_names[] = {
+    (STRPTR)"x1", (STRPTR)"x1.5", (STRPTR)"x2", (STRPTR)"x3", NULL
+};
 static STRPTR sound_detail_names[] = {
     (STRPTR)"Niskie", (STRPTR)"Srednie", (STRPTR)"Wysokie", NULL
 };
@@ -171,6 +177,7 @@ static LauncherConfig cfg = {
     0, /* normal memory */
     0, /* highest car detail */
     2, /* highest sound detail */
+    0, /* standard draw distance */
     "scsi.device",
     0
 };
@@ -237,6 +244,7 @@ static void load_config(void)
         else if (strcasecmp(key, "lowmem") == 0) cfg.lowmem = value;
         else if (strcasecmp(key, "car_detail") == 0) cfg.car_detail = value;
         else if (strcasecmp(key, "sound_detail") == 0) cfg.sound_detail = value;
+        else if (strcasecmp(key, "draw_distance") == 0) cfg.draw_distance = value;
         else if (strcasecmp(key, "cd_unit") == 0) cfg.cd_unit = value;
     }
     fclose(f);
@@ -255,6 +263,7 @@ static void load_config(void)
     cfg.lowmem = !!cfg.lowmem;
     cfg.car_detail = clamp_int(cfg.car_detail, 0, 4);
     cfg.sound_detail = clamp_int(cfg.sound_detail, 0, 2);
+    cfg.draw_distance = clamp_int(cfg.draw_distance, 0, 3);
     if (cfg.cd_device[0] == '\0') strcpy(cfg.cd_device, "scsi.device");
     cfg.cd_unit = clamp_int(cfg.cd_unit, 0, 255);
 }
@@ -277,6 +286,7 @@ static int save_config(void)
     fprintf(f, "lowmem=%d\n", cfg.lowmem);
     fprintf(f, "car_detail=%d\n", cfg.car_detail);
     fprintf(f, "sound_detail=%d\n", cfg.sound_detail);
+    fprintf(f, "draw_distance=%d\n", cfg.draw_distance);
     fprintf(f, "cd_device=%s\n", cfg.cd_device);
     fprintf(f, "cd_unit=%d\n", cfg.cd_unit);
     fclose(f);
@@ -452,6 +462,7 @@ static void read_gadgets(void)
     cfg.show_fps = get_check(GID_SHOW_FPS);
     cfg.car_detail = get_cycle(GID_CAR_DETAIL);
     cfg.sound_detail = get_cycle(GID_SOUND_DETAIL);
+    cfg.draw_distance = get_cycle(GID_DRAW_DISTANCE);
     cfg.windowed = get_check(GID_WINDOW);
     cfg.sound = get_check(GID_SOUND);
     cfg.sound_options = get_check(GID_SOUND_OPTIONS);
@@ -533,10 +544,13 @@ static int create_gui(struct Screen *screen)
     gadgets[GID_LOWMEM] = prev = make_check(prev, GID_LOWMEM, RIGHT_X,
         top + ROW_H * 6, L->lowmem, cfg.lowmem);
 
+    gadgets[GID_DRAW_DISTANCE] = prev = make_cycle(prev, GID_DRAW_DISTANCE, LEFT_X,
+        top + ROW_H * 7, L->draw_distance, draw_distance_names, cfg.draw_distance);
+
     gadgets[GID_CD_DEVICE] = prev = make_string(prev, GID_CD_DEVICE, LEFT_X,
-        top + ROW_H * 7, L->cd_device, cfg.cd_device, sizeof(cfg.cd_device) - 1);
+        top + ROW_H * 8, L->cd_device, cfg.cd_device, sizeof(cfg.cd_device) - 1);
     gadgets[GID_CD_UNIT] = prev = make_integer(prev, GID_CD_UNIT, RIGHT_X,
-        top + ROW_H * 7, L->cd_unit, cfg.cd_unit);
+        top + ROW_H * 8, L->cd_unit, cfg.cd_unit);
 
     button_y = WIN_H - win->BorderBottom - 36;
     gadgets[GID_SAVE] = prev = make_button(prev, GID_SAVE, 12, button_y, 96, L->save);
